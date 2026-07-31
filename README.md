@@ -7,17 +7,32 @@ respuesta de un llamado como entrada del siguiente** — por ejemplo, un login q
 devuelve un token que luego viaja en el header `Authorization` de las siguientes
 llamadas. Una especie de Postman visual con flujos conectables.
 
+## Estructura
+
+La aplicación vive en la carpeta **`IVZApiFlowVisualBuilder/`** (todas sus rutas son relativas),
+pensada para publicarse como subcarpeta de un sitio con varias aplicaciones:
+
+```
+<raíz del sitio>/
+    IVZApiFlowVisualBuilder/   ← esta aplicación
+        index.html
+        styles.css
+        app.js
+```
+
+En IIS (u otro servidor) se accede como `https://<dominio>/IVZApiFlowVisualBuilder/`.
+
 ## Cómo usarla
 
 Es una web estática, sin dependencias ni build. Opciones:
 
 ```bash
 # Opción 1: abrir directamente
-# (doble clic en index.html)
+# (doble clic en IVZApiFlowVisualBuilder/index.html)
 
 # Opción 2: servir localmente (recomendado)
 python3 -m http.server 8080
-# → http://localhost:8080
+# → http://localhost:8080/IVZApiFlowVisualBuilder/
 ```
 
 ## Funcionalidades
