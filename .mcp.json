@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "jarvis": {
+      "type": "http",
+      "url": "https://amdlabs.blogdns.org/Jarvis/api/mcp",
+      "headers": {
+        "Authorization": "Bearer ${JARVIS_MCP_TOKEN}"
+      }
+    }
+  }
+}
