@@ -8,8 +8,8 @@
 ;  Fondo amarillo (PAPER 6), sprites en negro (INK 0).
 ;
 ;  Controles:
-;     Jugador 1 - POLICIA : Q = arriba   A = abajo   V = disparo
-;     Jugador 2 - LADRON  : P = arriba   L = abajo   ESPACIO = disparo
+;     Jugador 1 - SHERIFF : Q = arriba   A = abajo   Z = disparo
+;     Jugador 2 - BANDIDO : P = arriba   L = abajo   B = disparo
 ;
 ;  Ensamblar con:  pasmo --bin src/balava.asm build/balava.bin
 ;=====================================================================
@@ -29,12 +29,12 @@ ALTO_SPR    EQU 32                  ; 32 pixeles de alto
 
 MIN_Y       EQU 16                  ; limite superior del campo de juego
 MAX_Y       EQU 160                 ; limite inferior (160 + 31 = 191)
-VEL_JUG     EQU 2                   ; pixeles por fotograma
+VEL_JUG     EQU 1                   ; pixeles por fotograma (movimiento fino)
 
 P1_INI_Y    EQU 40
 P2_INI_Y    EQU 120
 
-VEL_BALA    EQU 4                   ; pixeles por fotograma
+VEL_BALA    EQU 3                   ; pixeles por fotograma
 BALA_DY     EQU 13                  ; altura del revolver dentro del sprite
 BAL_INI_1   EQU 32                  ; x de salida de la bala del sheriff
 BAL_FIN_1   EQU 224                 ; x donde alcanza al bandido
@@ -51,6 +51,24 @@ CACTUS1_Y   EQU 100                 ; y = 100 .. 131
 CACTUS2_COL EQU 21                  ; x = 168 .. 183
 CACTUS2_Y   EQU 60                  ; y =  60 ..  91
 
+; --- cajas rompibles (una delante de cada pistolero) ------------------
+CAJA1_COL   EQU 5                   ; x =  40 ..  55
+CAJA2_COL   EQU 25                  ; x = 200 .. 215
+CAJA_Y      EQU 80                  ; y =  80 .. 111
+CAJA_ALTO   EQU 32                  ; cuatro tramos de 8 pixeles
+CAJA_ENTERA EQU %00001111           ; los cuatro tramos en pie
+
+; --- el caracol gigante que cruza el campo ----------------------------
+CARACOL_Y   EQU 136
+CARACOL_ALTO EQU 24
+CARACOL_ANCHO EQU 6                 ; 48 pixeles: 32 de bicho y un byte
+CARACOL_BYTES EQU CARACOL_ANCHO*CARACOL_ALTO      ; en blanco a cada lado
+CARACOL_MIN EQU 32
+CARACOL_MAX EQU 176
+CARACOL_LENTO EQU 3                 ; un pixel cada 3 fotogramas
+BUF_CARACOL_D EQU 0xE000            ; las 8 copias desplazadas de cada
+BUF_CARACOL_I EQU 0xE480            ; sentido, generadas al arrancar
+
 PUNTOS_WIN  EQU 5                   ; impactos para ganar la partida
 
             ORG 0x8000
@@ -63,6 +81,12 @@ inicio:
             ld      sp,0xFF00
             ld      iy,0x5C3A               ; la RST 38 de la ROM usa IY
             call    init_sysvars
+            ld      hl,spr_caracol_d        ; copias desplazadas del caracol
+            ld      de,BUF_CARACOL_D
+            call    genera_desplazados
+            ld      hl,spr_caracol_i
+            ld      de,BUF_CARACOL_I
+            call    genera_desplazados
             im      1
             ei
 
@@ -97,10 +121,19 @@ partida:
             ld      (puntos2),a
             ld      (b1_act),a
             ld      (b2_act),a
+            ld      (caracol_dir),a
+            ld      (caracol_t),a
+            ld      a,CARACOL_MIN
+            ld      (caracol_x),a
+            ld      a,CAJA_ENTERA           ; las cajas empiezan enteras
+            ld      (caja1),a
+            ld      (caja2),a
 
             call    limpia_pantalla
             call    dibuja_marcador
             call    dibuja_escenario
+            call    dibuja_cajas
+            call    dibuja_caracol
             call    hud_puntos
             call    coloca_jugadores
 
@@ -110,6 +143,7 @@ bucle:
             call    actualiza_p2
             call    actualiza_bala1
             call    actualiza_bala2
+            call    actualiza_caracol
 
             ld      a,(puntos1)
             cp      PUNTOS_WIN
@@ -201,7 +235,7 @@ ap1_no_sube:
 ap1_tiro:
             ld      bc,0xFEFE               ; fila CAPS Z X C V
             in      a,(c)
-            and     %00010000               ; V
+            and     %00000010               ; Z
             ret     nz
             ld      a,(b1_act)
             or      a
@@ -246,7 +280,7 @@ ap2_no_sube:
 ap2_tiro:
             ld      bc,0x7FFE               ; fila SPACE SYM M N B
             in      a,(c)
-            and     %00000001               ; ESPACIO
+            and     %00010000               ; B
             ret     nz
             ld      a,(b2_act)
             or      a
@@ -294,11 +328,18 @@ ab1_decorado:
             ld      a,(b1_y)
             ld      b,a
             ld      a,(b1_x)
-            call    choca_obstaculo
+            call    choca_caja              ; la caja se va rompiendo
+            jr      c,ab1_muere
+            ld      a,(b1_y)
+            ld      b,a
+            ld      a,(b1_x)
+            call    choca_obstaculo         ; decorado fijo y caracol
             jr      nc,ab1_pinta
-            xor     a                       ; la bala se queda en el obstaculo
+            call    sonido_rebote
+ab1_muere:
+            xor     a
             ld      (b1_act),a
-            jp      sonido_rebote
+            ret
 ab1_pinta:
             ld      a,(b1_y)
             ld      b,a
@@ -335,11 +376,18 @@ ab2_decorado:
             ld      a,(b2_y)
             ld      b,a
             ld      a,(b2_x)
-            call    choca_obstaculo
+            call    choca_caja              ; la caja se va rompiendo
+            jr      c,ab2_muere
+            ld      a,(b2_y)
+            ld      b,a
+            ld      a,(b2_x)
+            call    choca_obstaculo         ; decorado fijo y caracol
             jr      nc,ab2_pinta
+            call    sonido_rebote
+ab2_muere:
             xor     a
             ld      (b2_act),a
-            jp      sonido_rebote
+            ret
 ab2_pinta:
             ld      a,(b2_y)
             ld      b,a
@@ -566,6 +614,247 @@ dibuja_escenario:
             jp      dibuja_bloque
 
 ;---------------------------------------------------------------------
+; genera_desplazados - crea las ocho copias de un sprite, una por cada
+;   desplazamiento de 0 a 7 pixeles, para poder moverlo pixel a pixel.
+;   El sprite lleva un byte en blanco a cada lado, asi que al desplazar
+;   no se pierde nada y la columna que abandona ya queda a cero.
+;   entrada: HL = sprite original, DE = destino (8 copias seguidas)
+;---------------------------------------------------------------------
+genera_desplazados:
+            xor     a
+            ld      (gen_n),a
+gd_copia:
+            push    hl
+            ld      a,CARACOL_ALTO
+            ld      (gen_filas),a
+gd_fila:
+            xor     a
+            ld      (gen_resto),a
+            ld      a,CARACOL_ANCHO
+            ld      (gen_bytes),a
+gd_byte:
+            ld      a,(gen_n)
+            or      a
+            jr      z,gd_sin_desp
+            ld      b,a
+            ld      a,(hl)
+            ld      c,0                     ; C recoge lo que se sale
+gd_desp:
+            srl     a
+            rr      c
+            djnz    gd_desp
+            jr      gd_junta
+gd_sin_desp:
+            ld      a,(hl)
+            ld      c,0
+gd_junta:
+            inc     hl
+            push    hl
+            ld      hl,gen_resto
+            or      (hl)                    ; pega lo que sobro del byte anterior
+            ld      (hl),c
+            pop     hl
+            ld      (de),a
+            inc     de
+            ld      a,(gen_bytes)
+            dec     a
+            ld      (gen_bytes),a
+            jr      nz,gd_byte
+            ld      a,(gen_filas)
+            dec     a
+            ld      (gen_filas),a
+            jr      nz,gd_fila
+            pop     hl                      ; otra vez al principio del sprite
+            ld      a,(gen_n)
+            inc     a
+            ld      (gen_n),a
+            cp      8
+            jr      c,gd_copia
+            ret
+
+;---------------------------------------------------------------------
+; actualiza_caracol - lo mueve un pixel cada CARACOL_LENTO fotogramas
+;   y le da la vuelta al llegar a cada extremo
+;---------------------------------------------------------------------
+actualiza_caracol:
+            ld      a,(caracol_t)
+            inc     a
+            cp      CARACOL_LENTO
+            jr      nc,ac_mueve
+            ld      (caracol_t),a
+            ret
+ac_mueve:
+            xor     a
+            ld      (caracol_t),a
+            ld      a,(caracol_dir)
+            or      a
+            jr      nz,ac_izquierda
+            ld      a,(caracol_x)           ; va hacia la derecha
+            inc     a
+            cp      CARACOL_MAX+1
+            jr      c,ac_pinta
+            ld      a,1
+            ld      (caracol_dir),a
+            ld      a,CARACOL_MAX
+            jr      ac_pinta
+ac_izquierda:
+            ld      a,(caracol_x)
+            dec     a
+            cp      CARACOL_MIN
+            jr      nc,ac_pinta
+            xor     a
+            ld      (caracol_dir),a
+            ld      a,CARACOL_MIN
+ac_pinta:
+            ld      (caracol_x),a
+            ; cae en dibuja_caracol
+
+;---------------------------------------------------------------------
+; dibuja_caracol - vuelca la copia que toca segun el pixel exacto
+;---------------------------------------------------------------------
+dibuja_caracol:
+            ld      hl,0
+            ld      de,CARACOL_BYTES
+            ld      a,(caracol_x)
+            and     %00000111               ; copia = desplazamiento en pixeles
+            jr      z,dc_base
+            ld      b,a
+dc_suma:
+            add     hl,de
+            djnz    dc_suma
+dc_base:
+            ld      de,BUF_CARACOL_D
+            ld      a,(caracol_dir)
+            or      a
+            jr      z,dc_sentido
+            ld      de,BUF_CARACOL_I
+dc_sentido:
+            add     hl,de
+            ex      de,hl                   ; DE = datos ya desplazados
+            ld      a,CARACOL_ANCHO
+            ld      (ancho_bloque),a
+            ld      a,(caracol_x)
+            rrca
+            rrca
+            rrca
+            and     %00011111
+            ld      c,a
+            ld      a,CARACOL_Y
+            ld      b,CARACOL_ALTO
+            jp      dibuja_bloque
+
+;---------------------------------------------------------------------
+; dibuja_cajas - las dos cajas, tramo a tramo segun lo que quede en pie
+;---------------------------------------------------------------------
+dibuja_cajas:
+            ld      hl,caja1
+            ld      c,CAJA1_COL
+            call    dibuja_caja
+            ld      hl,caja2
+            ld      c,CAJA2_COL
+dibuja_caja:                                ; HL = estado, C = columna
+            ld      a,2
+            ld      (ancho_bloque),a
+            ld      a,(hl)
+            ld      (caja_masc),a
+            ld      a,CAJA_Y
+            ld      (caja_fila),a
+            ld      b,4
+dcaja_bucle:
+            push    bc
+            ld      a,(caja_masc)
+            srl     a
+            ld      (caja_masc),a
+            jr      nc,dcaja_sig            ; ese tramo ya no esta
+            ld      a,(caja_fila)
+            ld      de,spr_caja
+            ld      b,8
+            call    dibuja_bloque
+dcaja_sig:
+            ld      a,(caja_fila)
+            add     a,8
+            ld      (caja_fila),a
+            pop     bc
+            djnz    dcaja_bucle
+            ret
+
+;---------------------------------------------------------------------
+; choca_caja - la bala contra las cajas: si el tramo esta en pie lo
+;   rompe y se para; si ya estaba roto, pasa por el hueco
+;   entrada: A = x de la bala, B = y
+;   salida : carry = 1 si la caja detiene la bala
+;---------------------------------------------------------------------
+choca_caja:
+            ld      (tmp_x),a
+            ld      a,b
+            ld      (tmp_y),a
+            inc     a                       ; fila de abajo de la bala
+            sub     CAJA_Y
+            jr      c,cc_no                 ; pasa por encima
+            cp      CAJA_ALTO+1
+            jr      nc,cc_no                ; pasa por debajo
+            ld      a,(tmp_x)
+            add     a,3
+            cp      CAJA1_COL*8
+            jr      c,cc_no                 ; aun no ha llegado a la caja 1
+            ld      a,(tmp_x)
+            cp      CAJA1_COL*8+16
+            jr      c,cc_caja1
+            ld      a,(tmp_x)
+            add     a,3
+            cp      CAJA2_COL*8
+            jr      c,cc_no                 ; entre las dos cajas
+            ld      a,(tmp_x)
+            cp      CAJA2_COL*8+16
+            jr      c,cc_caja2
+cc_no:
+            or      a                       ; sin acarreo: la bala sigue
+            ret
+cc_caja2:
+            ld      hl,caja2
+            ld      c,CAJA2_COL
+            jr      cc_tramo
+cc_caja1:
+            ld      hl,caja1
+            ld      c,CAJA1_COL
+cc_tramo:
+            ld      a,(tmp_y)               ; tramo = (y - CAJA_Y) / 8
+            sub     CAJA_Y
+            jr      nc,cc_dentro
+            xor     a                       ; la bala asoma por arriba
+cc_dentro:
+            rrca
+            rrca
+            rrca
+            and     %00000011
+            ld      b,a                     ; B = numero de tramo (0 a 3)
+            ld      a,CAJA_Y                ; y del tramo y bit que le toca
+            ld      e,1
+            inc     b
+cc_altura:
+            dec     b
+            jr      z,cc_prueba
+            add     a,8
+            sla     e
+            jr      cc_altura
+cc_prueba:
+            ld      (caja_fila),a
+            ld      a,e                     ; E = bit del tramo
+            and     (hl)
+            ret     z                       ; ya estaba roto: la bala pasa
+            ld      a,(hl)
+            xor     e                       ; se lo lleva por delante
+            ld      (hl),a
+            ld      a,2
+            ld      (ancho_bloque),a
+            ld      a,(caja_fila)
+            ld      b,8
+            call    borra_bloque
+            call    sonido_rotura
+            scf
+            ret
+
+;---------------------------------------------------------------------
 ; choca_obstaculo - mira si la bala toca algo del decorado
 ;   entrada: A = x de la bala, B = y
 ;   salida : carry = 1 si choca
@@ -574,6 +863,14 @@ choca_obstaculo:
             ld      (tmp_x),a
             ld      a,b
             ld      (tmp_y),a
+            ld      a,(caracol_x)           ; el caracol, que va andando
+            ld      b,a
+            add     a,CARACOL_ANCHO*8-1
+            ld      c,a
+            ld      d,CARACOL_Y
+            ld      e,CARACOL_Y+CARACOL_ALTO-1
+            call    co_prueba
+            ret     c
             ld      hl,obstaculos
 co_bucle:
             ld      a,(hl)                  ; x0 (0 = fin de la tabla)
@@ -588,43 +885,60 @@ co_bucle:
             ld      e,(hl)                  ; y1
             inc     hl
             push    hl
-            ld      a,(tmp_x)
-            add     a,3                     ; ultimo pixel de la bala
-            cp      b
-            jr      c,co_siguiente          ; la bala acaba antes
-            ld      a,(tmp_x)
-            cp      c
-            jr      z,co_mira_y
-            jr      nc,co_siguiente         ; la bala empieza despues
-co_mira_y:
-            ld      a,(tmp_y)
-            inc     a                       ; fila de abajo de la bala
-            cp      d
-            jr      c,co_siguiente          ; pasa por encima
-            ld      a,(tmp_y)
-            cp      e
-            jr      z,co_choca
-            jr      nc,co_siguiente         ; pasa por debajo
-co_choca:
+            call    co_prueba
             pop     hl
-            scf
-            ret
-co_siguiente:
-            pop     hl
+            ret     c
             jr      co_bucle
 
 ;---------------------------------------------------------------------
+; co_prueba - la bala guardada en (tmp_x, tmp_y) contra un rectangulo
+;   entrada: B = x0, C = x1, D = y0, E = y1
+;   salida : carry = 1 si se tocan
+;---------------------------------------------------------------------
+co_prueba:
+            ld      a,(tmp_x)
+            add     a,3                     ; ultimo pixel de la bala
+            cp      b
+            jr      c,cp_no                 ; la bala acaba antes
+            ld      a,(tmp_x)
+            cp      c
+            jr      z,cp_mira_y
+            jr      nc,cp_no                ; la bala empieza despues
+cp_mira_y:
+            ld      a,(tmp_y)
+            inc     a                       ; fila de abajo de la bala
+            cp      d
+            jr      c,cp_no                 ; pasa por encima
+            ld      a,(tmp_y)
+            cp      e
+            jr      z,cp_choca
+            jr      nc,cp_no                ; pasa por debajo
+cp_choca:
+            scf
+            ret
+cp_no:
+            or      a                       ; carry a cero: no se tocan
+            ret
+
+;---------------------------------------------------------------------
 ; bala_xor - dibuja/borra una bala (4x2 pixeles) en modo XOR
+;   La bala puede estar en cualquier x: el patron de 4 pixeles se
+;   desplaza dentro de una pareja de bytes, asi que se mueve pixel a
+;   pixel y no a saltos de caracter.
 ;   entrada: A = x en pixeles, B = y
 ;---------------------------------------------------------------------
 bala_xor:
             ld      c,a
-            and     %00000100               ; mitad izquierda o derecha
-            ld      a,%11110000
-            jr      z,bx_pat
-            ld      a,%00001111
-bx_pat:
-            ld      d,a                     ; D = patron
+            and     %00000111               ; desplazamiento dentro del byte
+            ld      hl,0xF000               ; patron de 4 pixeles
+            jr      z,bx_listo
+            ld      d,a
+bx_desp:
+            srl     h
+            rr      l
+            dec     d
+            jr      nz,bx_desp
+bx_listo:
             ld      a,c
             rrca
             rrca
@@ -632,14 +946,20 @@ bx_pat:
             and     %00011111
             ld      c,a                     ; C = columna
             ld      a,b                     ; A = y
+            push    hl
             call    scr_addr
-            ld      a,(hl)
-            xor     d
-            ld      (hl),a
+            pop     de                      ; D y E = las dos mitades del patron
+            call    bx_fila
             call    down_hl
+bx_fila:
             ld      a,(hl)
             xor     d
             ld      (hl),a
+            inc     l
+            ld      a,(hl)
+            xor     e
+            ld      (hl),a
+            dec     l
             ret
 
 ;---------------------------------------------------------------------
@@ -813,16 +1133,25 @@ menu_flash:
             inc     hl
             djnz    menu_flash
             call    espera_libre
+            di                              ; la melodia necesita el reloj entero
+            ld      hl,musica
+            ld      (mus_ptr),hl
+            xor     a
+            ld      (mus_ticks),a
 menu_espera:
-            halt
+            call    musica_tick             ; 60 ms de musica por vuelta
             ld      bc,0xF7FE               ; fila 1 2 3 4 5
             in      a,(c)
             ld      b,a
             and     %00000001               ; tecla 1 = jugar
-            ret     z
+            jr      nz,menu_otra
+            ei
+            ret
+menu_otra:
             ld      a,b
             and     %00000010               ; tecla 2 = controles
             jr      nz,menu_espera
+            ei
             call    pantalla_controles
             jp      menu                    ; el menu queda fuera del alcance de JR
 
@@ -1015,6 +1344,14 @@ sonido_tiro:
             ld      c,40
             jp      sonido
 
+sonido_rotura:
+            ld      b,18
+            ld      c,60
+            call    sonido
+            ld      b,12
+            ld      c,150
+            jp      sonido
+
 sonido_rebote:
             ld      b,10
             ld      c,18
@@ -1027,6 +1364,54 @@ sonido_impacto:
             ld      b,30
             ld      c,190
             jp      sonido
+
+;=====================================================================
+; MUSICA DEL MENU
+;=====================================================================
+;---------------------------------------------------------------------
+; musica_tick - suena 60 ms de la melodia y vuelve, para que el menu
+;   pueda mirar el teclado entre tick y tick
+;---------------------------------------------------------------------
+musica_tick:
+            ld      a,(mus_ticks)
+            or      a
+            jr      nz,mt_suena
+            ld      hl,(mus_ptr)            ; toca nota nueva
+            ld      a,(hl)
+            cp      0xFF
+            jr      nz,mt_nota
+            ld      hl,musica               ; se acabo: vuelta a empezar
+            ld      a,(hl)
+mt_nota:
+            ld      (mus_per),a
+            inc     hl
+            ld      a,(hl)
+            ld      (mus_cic),a
+            inc     hl
+            ld      a,(hl)
+            ld      (mus_ticks),a
+            inc     hl
+            ld      (mus_ptr),hl
+mt_suena:
+            ld      a,(mus_ticks)
+            dec     a
+            ld      (mus_ticks),a
+            ld      a,(mus_per)
+            or      a
+            jr      z,mt_silencio
+            ld      c,a
+            ld      a,(mus_cic)
+            ld      b,a
+            jp      sonido                  ; B ciclos con periodo C
+mt_silencio:
+            ld      b,60                    ; misma duracion, sin altavoz
+mt_pausa1:
+            ld      a,219
+mt_pausa2:
+            dec     a
+            jr      nz,mt_pausa2
+            djnz    mt_pausa1
+            ret
 
 ;=====================================================================
 ; DATOS
@@ -1243,15 +1628,128 @@ txt_autor:       DEFB "(C) 2026  AMDLABS",0
 txt_controles:   DEFB "CONTROLES",0
 txt_j1:          DEFB "JUGADOR 1 - SHERIFF",0
 txt_j1b:         DEFB "Q=ARRIBA  A=ABAJO",0
-txt_j1c:         DEFB "V=DISPARO",0
+txt_j1c:         DEFB "Z=DISPARO",0
 txt_j2:          DEFB "JUGADOR 2 - BANDIDO",0
 txt_j2b:         DEFB "P=ARRIBA  L=ABAJO",0
-txt_j2c:         DEFB "ESPACIO=DISPARO",0
+txt_j2c:         DEFB "B=DISPARO",0
 txt_reglas:      DEFB "5 IMPACTOS PARA GANAR",0
 txt_tecla:       DEFB "PULSA CUALQUIER TECLA",0
 txt_gana_poli:   DEFB "GANA EL SHERIFF",0
 txt_gana_ladron: DEFB "GANA EL BANDIDO",0
 txt_final:       DEFB "RESULTADO",0
+
+spr_caracol_d:           ; caracol mirando a la derecha, 48x24 con margenes
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00100100, %00000000   ; ..................................#..#..........
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00100100, %00000000   ; ..................................#..#..........
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00010100, %00000000   ; ...................................#.#..........
+            DEFB    %00000000, %00000011, %11111100, %00000000, %00011100, %00000000   ; ..............########.............###..........
+            DEFB    %00000000, %00001111, %11111111, %00000000, %00111100, %00000000   ; ............############..........####..........
+            DEFB    %00000000, %00011110, %00000111, %10000000, %01111100, %00000000   ; ...........####......####........#####..........
+            DEFB    %00000000, %00111001, %11111001, %11000000, %11111100, %00000000   ; ..........###..######..###......######..........
+            DEFB    %00000000, %00110011, %00001100, %11000001, %11111100, %00000000   ; ..........##..##....##..##.....#######..........
+            DEFB    %00000000, %01110110, %01100110, %11100011, %11111100, %00000000   ; .........###.##..##..##.###...########..........
+            DEFB    %00000000, %01110110, %11110110, %11100111, %11111100, %00000000   ; .........###.##.####.##.###..#########..........
+            DEFB    %00000000, %01110110, %11110110, %11101111, %11111100, %00000000   ; .........###.##.####.##.###.##########..........
+            DEFB    %00000000, %01110110, %00000110, %11101111, %11111100, %00000000   ; .........###.##......##.###.##########..........
+            DEFB    %00000000, %00110011, %11111100, %11001111, %11111100, %00000000   ; ..........##..########..##..##########..........
+            DEFB    %00000000, %00111000, %00000001, %11011111, %11111100, %00000000   ; ..........###..........###.###########..........
+            DEFB    %00000000, %00011110, %00000111, %10011111, %11111100, %00000000   ; ...........####......####..###########..........
+            DEFB    %00000000, %00001111, %11111111, %00011111, %11111100, %00000000   ; ............############...###########..........
+            DEFB    %00000000, %00000011, %11111100, %00011111, %11111100, %00000000   ; ..............########.....###########..........
+            DEFB    %00000000, %00000000, %00000000, %00011111, %11111100, %00000000   ; ...........................###########..........
+            DEFB    %00000000, %00111111, %11111111, %11111111, %11111110, %00000000   ; ..........#############################.........
+            DEFB    %00000000, %01111111, %11111111, %11111111, %11111110, %00000000   ; .........##############################.........
+            DEFB    %00000000, %01111111, %11111111, %11111111, %11111110, %00000000   ; .........##############################.........
+            DEFB    %00000000, %00111111, %11111111, %11111111, %11111100, %00000000   ; ..........############################..........
+            DEFB    %00000000, %00011111, %11111111, %11111111, %11111000, %00000000   ; ...........##########################...........
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ................................................
+
+spr_caracol_i:           ; caracol mirando a la izquierda
+            DEFB    %00000000, %00100100, %00000000, %00000000, %00000000, %00000000   ; ..........#..#..................................
+            DEFB    %00000000, %00100100, %00000000, %00000000, %00000000, %00000000   ; ..........#..#..................................
+            DEFB    %00000000, %00101000, %00000000, %00000000, %00000000, %00000000   ; ..........#.#...................................
+            DEFB    %00000000, %00111000, %00000000, %00111111, %11000000, %00000000   ; ..........###.............########..............
+            DEFB    %00000000, %00111100, %00000000, %11111111, %11110000, %00000000   ; ..........####..........############............
+            DEFB    %00000000, %00111110, %00000001, %11100000, %01111000, %00000000   ; ..........#####........####......####...........
+            DEFB    %00000000, %00111111, %00000011, %10011111, %10011100, %00000000   ; ..........######......###..######..###..........
+            DEFB    %00000000, %00111111, %10000011, %00110000, %11001100, %00000000   ; ..........#######.....##..##....##..##..........
+            DEFB    %00000000, %00111111, %11000111, %01100110, %01101110, %00000000   ; ..........########...###.##..##..##.###.........
+            DEFB    %00000000, %00111111, %11100111, %01101111, %01101110, %00000000   ; ..........#########..###.##.####.##.###.........
+            DEFB    %00000000, %00111111, %11110111, %01101111, %01101110, %00000000   ; ..........##########.###.##.####.##.###.........
+            DEFB    %00000000, %00111111, %11110111, %01100000, %01101110, %00000000   ; ..........##########.###.##......##.###.........
+            DEFB    %00000000, %00111111, %11110011, %00111111, %11001100, %00000000   ; ..........##########..##..########..##..........
+            DEFB    %00000000, %00111111, %11111011, %10000000, %00011100, %00000000   ; ..........###########.###..........###..........
+            DEFB    %00000000, %00111111, %11111001, %11100000, %01111000, %00000000   ; ..........###########..####......####...........
+            DEFB    %00000000, %00111111, %11111000, %11111111, %11110000, %00000000   ; ..........###########...############............
+            DEFB    %00000000, %00111111, %11111000, %00111111, %11000000, %00000000   ; ..........###########.....########..............
+            DEFB    %00000000, %00111111, %11111000, %00000000, %00000000, %00000000   ; ..........###########...........................
+            DEFB    %00000000, %01111111, %11111111, %11111111, %11111100, %00000000   ; .........#############################..........
+            DEFB    %00000000, %01111111, %11111111, %11111111, %11111110, %00000000   ; .........##############################.........
+            DEFB    %00000000, %01111111, %11111111, %11111111, %11111110, %00000000   ; .........##############################.........
+            DEFB    %00000000, %00111111, %11111111, %11111111, %11111100, %00000000   ; ..........############################..........
+            DEFB    %00000000, %00011111, %11111111, %11111111, %11111000, %00000000   ; ...........##########################...........
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ................................................
+
+spr_caja:                ; un tramo de caja, 16x8 (la caja son cuatro)
+            DEFB    %11111111, %11111111   ; ################
+            DEFB    %11000000, %00000011   ; ##............##
+            DEFB    %11011111, %11111011   ; ##.##########.##
+            DEFB    %11011111, %11111011   ; ##.##########.##
+            DEFB    %11011111, %11111011   ; ##.##########.##
+            DEFB    %11011111, %11111011   ; ##.##########.##
+            DEFB    %11000000, %00000011   ; ##............##
+            DEFB    %11111111, %11111111   ; ################
+
+;---------------------------------------------------------------------
+; melodia del menu: Oh! Susanna (Stephen Foster, 1848, dominio publico)
+; cada nota son tres bytes: periodo, ciclos por tick y numero de ticks
+; (periodo 0 = silencio, 0xFF cierra la melodia y vuelve a empezar)
+;---------------------------------------------------------------------
+musica:
+            DEFB    207, 31, 2  ; C5 (523 Hz -> 524 Hz)
+            DEFB    184, 35, 2  ; D5 (587 Hz -> 588 Hz)
+            DEFB    164, 40, 4  ; E5 (659 Hz -> 659 Hz)
+            DEFB    138, 47, 4  ; G5 (784 Hz -> 782 Hz)
+            DEFB    138, 47, 2  ; G5 (784 Hz -> 782 Hz)
+            DEFB    122, 53, 2  ; A5 (880 Hz -> 883 Hz)
+            DEFB    138, 47, 4  ; G5 (784 Hz -> 782 Hz)
+            DEFB    164, 40, 2  ; E5 (659 Hz -> 659 Hz)
+            DEFB    207, 31, 2  ; C5 (523 Hz -> 524 Hz)
+            DEFB    184, 35, 4  ; D5 (587 Hz -> 588 Hz)
+            DEFB    164, 40, 4  ; E5 (659 Hz -> 659 Hz)
+            DEFB    164, 40, 2  ; E5 (659 Hz -> 659 Hz)
+            DEFB    184, 35, 2  ; D5 (587 Hz -> 588 Hz)
+            DEFB    207, 31, 6  ; C5 (523 Hz -> 524 Hz)
+            DEFB    0, 0, 2          ; silencio
+            DEFB    207, 31, 2  ; C5 (523 Hz -> 524 Hz)
+            DEFB    184, 35, 2  ; D5 (587 Hz -> 588 Hz)
+            DEFB    164, 40, 4  ; E5 (659 Hz -> 659 Hz)
+            DEFB    138, 47, 4  ; G5 (784 Hz -> 782 Hz)
+            DEFB    138, 47, 2  ; G5 (784 Hz -> 782 Hz)
+            DEFB    122, 53, 2  ; A5 (880 Hz -> 883 Hz)
+            DEFB    138, 47, 4  ; G5 (784 Hz -> 782 Hz)
+            DEFB    164, 40, 2  ; E5 (659 Hz -> 659 Hz)
+            DEFB    207, 31, 2  ; C5 (523 Hz -> 524 Hz)
+            DEFB    184, 35, 4  ; D5 (587 Hz -> 588 Hz)
+            DEFB    164, 40, 4  ; E5 (659 Hz -> 659 Hz)
+            DEFB    184, 35, 4  ; D5 (587 Hz -> 588 Hz)
+            DEFB    207, 31, 8  ; C5 (523 Hz -> 524 Hz)
+            DEFB    0, 0, 3          ; silencio
+            DEFB    155, 42, 4  ; F5 (698 Hz -> 697 Hz)
+            DEFB    155, 42, 4  ; F5 (698 Hz -> 697 Hz)
+            DEFB    122, 53, 4  ; A5 (880 Hz -> 883 Hz)
+            DEFB    122, 53, 4  ; A5 (880 Hz -> 883 Hz)
+            DEFB    122, 53, 2  ; A5 (880 Hz -> 883 Hz)
+            DEFB    138, 47, 2  ; G5 (784 Hz -> 782 Hz)
+            DEFB    164, 40, 4  ; E5 (659 Hz -> 659 Hz)
+            DEFB    207, 31, 4  ; C5 (523 Hz -> 524 Hz)
+            DEFB    184, 35, 4  ; D5 (587 Hz -> 588 Hz)
+            DEFB    164, 40, 4  ; E5 (659 Hz -> 659 Hz)
+            DEFB    184, 35, 2  ; D5 (587 Hz -> 588 Hz)
+            DEFB    207, 31, 2  ; C5 (523 Hz -> 524 Hz)
+            DEFB    184, 35, 8  ; D5 (587 Hz -> 588 Hz)
+            DEFB    0, 0, 4          ; silencio
+            DEFB    0xFF
 
 ; ---- obstaculos: x0, x1, y0, y1 (x0 = 0 cierra la tabla) -------------
 obstaculos:
@@ -1264,6 +1762,21 @@ obstaculos:
 ancho_bloque:    DEFB ANCHO_JUG
 tmp_x:           DEFB 0
 tmp_y:           DEFB 0
+caja1:           DEFB CAJA_ENTERA        ; un bit por tramo en pie
+caja2:           DEFB CAJA_ENTERA
+caja_masc:       DEFB 0
+caja_fila:       DEFB 0
+caracol_x:       DEFB CARACOL_MIN
+caracol_dir:     DEFB 0                  ; 0 = a la derecha, 1 = a la izquierda
+caracol_t:       DEFB 0
+gen_n:           DEFB 0
+gen_filas:       DEFB 0
+gen_bytes:       DEFB 0
+gen_resto:       DEFB 0
+mus_ptr:         DEFW 0
+mus_ticks:       DEFB 0
+mus_per:         DEFB 0
+mus_cic:         DEFB 0
 p1_y:            DEFB P1_INI_Y
 p2_y:            DEFB P2_INI_Y
 b1_x:            DEFB 0

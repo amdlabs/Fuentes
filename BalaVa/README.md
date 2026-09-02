@@ -3,9 +3,11 @@
 Duelo en el oeste para dos jugadores, en ensamblador Z80 para ZX Spectrum 48K.
 El sheriff (izquierda) y el bandido (derecha) se disparan de un lado a otro de
 la pantalla: solo pueden moverse **arriba y abajo** para esquivar las balas del
-contrario. En medio hay una carreta y dos cactus que **paran los disparos**, así
-que además de esquivar hay que buscar la calle libre. Fondo amarillo, sprites en
-negro. Gana el primero que consiga 5 impactos.
+contrario. En medio hay una carreta y dos cactus que **paran los disparos**, un
+**caracol gigante** que cruza el campo despacio y va tapando calles a su paso, y
+delante de cada pistolero una **caja** tras la que parapetarse, que se va
+rompiendo a tiros tramo a tramo. Fondo amarillo, sprites en negro. Gana el
+primero que consiga 5 impactos.
 
     dist/balava.z80    <- snapshot listo para cargar en un emulador
 
@@ -19,15 +21,16 @@ dos opciones.
     2  CONTROLES
 
 El aviso `PULSA 1 O 2` parpadea usando el bit FLASH de los atributos, que lo
-hace la propia ULA sin gastar un solo ciclo de CPU. Al terminar una partida,
-cualquier tecla devuelve al menú.
+hace la propia ULA sin gastar un solo ciclo de CPU. De fondo suena **Oh! Susanna**
+(Stephen Foster, 1848, de dominio público) por el altavoz. Al terminar una
+partida, cualquier tecla devuelve al menú.
 
 ## Controles
 
 | | Arriba | Abajo | Disparo |
 |---|---|---|---|
-| Jugador 1 — Sheriff (izquierda) | `Q` | `A` | `V` |
-| Jugador 2 — Bandido (derecha) | `P` | `L` | `ESPACIO` |
+| Jugador 1 — Sheriff (izquierda) | `Q` | `A` | `Z` |
+| Jugador 2 — Bandido (derecha) | `P` | `L` | `B` |
 
 Cada jugador solo puede tener una bala en el aire: hasta que la suya no llega
 al otro lado, no puede volver a disparar.
@@ -53,9 +56,10 @@ comprimir (30 bytes de cabecera + los 49152 de RAM), con `PC=0x8000`,
 ## Pruebas
 
 `tools/probar.py` ejecuta el snapshot en un Z80 emulado de verdad y comprueba
-el juego entero (menú, logotipo, pantalla de controles, movimiento, topes,
-disparos, impactos, esquivas, marcador, fin de partida y que no queden restos
-de píxeles en pantalla):
+el juego entero (menú, logotipo, música —midiendo las frecuencias que salen por
+el altavoz y comparándolas con la melodía guardada—, pantalla de controles,
+movimiento fino, topes, disparos, impactos, esquivas, caracol, rotura de las
+cajas, marcador, fin de partida y que no queden restos de píxeles en pantalla):
 
     pip install z80 pillow
     ./build.sh
@@ -64,6 +68,18 @@ de píxeles en pantalla):
 Monta una ROM sintética con un manejador mínimo de la `IM 1` y un juego de
 caracteres 8x8 en `0x3D00`, que es donde lo tiene la ROM real, de modo que no
 hace falta ninguna imagen de ROM con derechos.
+
+## El campo de juego
+
+- **Carreta y cactus**: fijos, paran las balas.
+- **Caracol gigante**: cruza el campo de lado a lado a un píxel cada tres
+  fotogramas (unos 15 segundos por travesía, más o menos media jugada), da la
+  vuelta al llegar al final y también para las balas. Como se mueve, la calle
+  que tapa va cambiando.
+- **Cajas**: una delante de cada pistolero, de cuatro tramos. Cada impacto se
+  lleva un tramo por delante; por el hueco que queda ya pasan las balas. Sirven
+  de parapeto, pero también tapan los propios disparos, así que abrirse una
+  tronera cuesta munición.
 
 ## Cómo funciona
 
@@ -76,8 +92,17 @@ hace falta ninguna imagen de ROM con derechos.
 - **Sprites**: los pistoleros miden 24x32 píxeles (3 columnas de caracteres por
   32 filas) y se vuelcan con `dibuja_bloque`, una rutina genérica que sirve
   igual para el decorado (cactus de 16x32 y carreta de 24x28). Al moverse se
-  redibujan y se borran solo las 2 filas que dejan libres, así que no parpadean
-  ni hace falta doble búfer.
+  redibujan y se borran solo la fila que dejan libre, así que no parpadean ni
+  hace falta doble búfer.
+- **Movimiento fino**: todo se mueve a nivel de píxel, nunca a saltos de
+  carácter. En vertical basta con cambiar la fila de arranque (un píxel por
+  fotograma). En horizontal hace falta desplazar los bytes: al arrancar,
+  `genera_desplazados` construye en RAM las **ocho copias** del caracol (una por
+  cada desplazamiento de 0 a 7 píxeles) rotando los bytes de cada fila con
+  `srl`/`rr`, y luego mover un píxel es solo elegir la copia que toca. El sprite
+  lleva un byte en blanco a cada lado, así que la columna que abandona queda
+  borrada sola y no deja rastro. Las balas usan la misma idea en pequeño: el
+  patrón de 4 píxeles se desplaza dentro de una pareja de bytes.
 - **Decorado**: la carreta y los dos cactus son obstáculos de verdad. La tabla
   `obstaculos` guarda un rectángulo (x0, x1, y0, y1) por pieza y `choca_obstaculo`
   comprueba cada bala contra ella **antes** de dibujarla, así que la bala se
@@ -91,6 +116,12 @@ hace falta ninguna imagen de ROM con derechos.
   amarillo, así que no hay *attribute clash* posible.
 - **Teclado**: lectura directa del puerto `0xFE` por semifilas; el menú lee las
   ocho a la vez con el byte alto a 0 para el «pulsa cualquier tecla».
+- **Música**: el altavoz se conmuta con un bucle de retardo, así que un periodo
+  completo son `32*C + 60` T-estados y la nota sale a `3.500.000 / (32*C + 60)`
+  Hz. La melodía se guarda como (periodo, ciclos por tick, ticks) y suena en
+  trozos de 60 ms para que el menú pueda mirar el teclado entre uno y otro. Las
+  interrupciones se desactivan mientras suena, que si no la RST 38 desafina las
+  notas.
 - **Ritmo**: `HALT` en el bucle principal sincroniza el juego a los 50 Hz de la
   interrupción, y los textos se imprimen con el juego de caracteres de la ROM
   (`0x3C00 + código*8`) sin depender de las rutinas de canales del BASIC.
