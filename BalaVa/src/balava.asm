@@ -56,18 +56,36 @@ CAJA1_COL   EQU 5                   ; x =  40 ..  55
 CAJA2_COL   EQU 25                  ; x = 200 .. 215
 CAJA_Y      EQU 80                  ; y =  80 .. 111
 CAJA_ALTO   EQU 32                  ; cuatro tramos de 8 pixeles
-CAJA_ENTERA EQU %00001111           ; los cuatro tramos en pie
 
 ; --- el caracol gigante que cruza el campo ----------------------------
-CARACOL_Y   EQU 136
-CARACOL_ALTO EQU 24
+CARACOL_ALTO EQU 26                 ; 24 de bicho y una fila en blanco arriba
 CARACOL_ANCHO EQU 6                 ; 48 pixeles: 32 de bicho y un byte
 CARACOL_BYTES EQU CARACOL_ANCHO*CARACOL_ALTO      ; en blanco a cada lado
-CARACOL_MIN EQU 32
+CARACOL_MIN EQU 32                  ; por donde puede pasear
 CARACOL_MAX EQU 176
-CARACOL_LENTO EQU 3                 ; un pixel cada 3 fotogramas
-BUF_CARACOL_D EQU 0xE000            ; las 8 copias desplazadas de cada
-BUF_CARACOL_I EQU 0xE480            ; sentido, generadas al arrancar
+CARACOL_MIN_Y EQU 132
+CARACOL_MAX_Y EQU 164
+
+; --- la escena del funeral -------------------------------------------
+CARRETA_ANCHO EQU 5                 ; la carreta con margenes, 40 pixeles
+CARRETA_BYTES EQU CARRETA_ANCHO*CARRETA_ALTO
+ATAUD_ALTO  EQU 16
+ATAUD_ANCHO EQU 5
+ATAUD_BYTES EQU ATAUD_ANCHO*ATAUD_ALTO
+ESC_CARRETA_Y EQU 108               ; la carreta cruza por aqui
+ESC_ATAUD_Y EQU 92                  ; el ataud va encima de ella
+ESC_CUERPO_Y EQU 120                ; el caido espera en el suelo
+ESC_CUERPO_COL EQU 17
+ESC_PASO    EQU 3                   ; pixeles por nota
+ESC_PARADA  EQU 104                 ; donde recoge el ataud
+ESC_FIN     EQU 216                 ; y por donde se va
+
+; --- memoria de trabajo (fuera del binario) --------------------------
+BUF_CARACOL_D EQU 0xE000            ; 8 copias desplazadas de cada cosa
+BUF_CARACOL_I EQU BUF_CARACOL_D+CARACOL_BYTES*8
+BUF_CARRETA EQU BUF_CARACOL_I+CARACOL_BYTES*8
+BUF_ATAUD   EQU BUF_CARRETA+CARRETA_BYTES*8
+BUF_DECORADO EQU BUF_ATAUD+ATAUD_BYTES*8          ; copia del decorado
 
 PUNTOS_WIN  EQU 5                   ; impactos para ganar la partida
 
@@ -81,11 +99,29 @@ inicio:
             ld      sp,0xFF00
             ld      iy,0x5C3A               ; la RST 38 de la ROM usa IY
             call    init_sysvars
-            ld      hl,spr_caracol_d        ; copias desplazadas del caracol
+            ld      a,CARACOL_ANCHO         ; copias desplazadas de todo lo
+            ld      (gen_ancho),a           ; que se mueve al pixel
+            ld      a,CARACOL_ALTO
+            ld      (gen_alto),a
+            ld      hl,spr_caracol_d
             ld      de,BUF_CARACOL_D
             call    genera_desplazados
             ld      hl,spr_caracol_i
             ld      de,BUF_CARACOL_I
+            call    genera_desplazados
+            ld      a,CARRETA_ANCHO
+            ld      (gen_ancho),a
+            ld      a,CARRETA_ALTO
+            ld      (gen_alto),a
+            ld      hl,spr_carreta_m
+            ld      de,BUF_CARRETA
+            call    genera_desplazados
+            ld      a,ATAUD_ANCHO
+            ld      (gen_ancho),a
+            ld      a,ATAUD_ALTO
+            ld      (gen_alto),a
+            ld      hl,spr_ataud_m
+            ld      de,BUF_ATAUD
             call    genera_desplazados
             im      1
             ei
@@ -130,9 +166,8 @@ partida:
             ld      (caracol_t),a
             ld      a,CARACOL_MIN
             ld      (caracol_x),a
-            ld      a,CAJA_ENTERA           ; las cajas empiezan enteras
-            ld      (caja1),a
-            ld      (caja2),a
+            ld      a,CARACOL_MAX_Y
+            ld      (caracol_y),a
 
             call    limpia_pantalla
             call    dibuja_marcador
@@ -330,21 +365,46 @@ actualiza_bala1:
             ret     nc                      ; pasa por debajo
             jp      impacto_ladron
 ab1_decorado:
+            ld      a,(b2_act)          ; ¿se cruza con la otra bala?
+            or      a
+            jr      z,ab1_mira
+            ld      a,(b1_x)
+            ld      hl,b2_x
+            sub     (hl)
+            jr      nc,ab1_dx
+            neg
+ab1_dx:
+            cp      4
+            jr      nc,ab1_mira
+            ld      a,(b1_y)
+            ld      hl,b2_y
+            sub     (hl)
+            jr      nc,ab1_dy
+            neg
+ab1_dy:
+            cp      2
+            jr      nc,ab1_mira
+            ld      a,(b2_y)            ; las dos se anulan en el aire
+            ld      b,a
+            ld      a,(b2_x)
+            call    bala_xor
+            xor     a
+            ld      (b2_act),a
+            ld      (b1_act),a
+            jp      sonido_rebote
+ab1_mira:
             ld      a,(b1_y)
             ld      b,a
             ld      a,(b1_x)
-            call    choca_caja              ; la caja se va rompiendo
-            jr      c,ab1_muere
-            ld      a,(b1_y)
-            ld      b,a
-            ld      a,(b1_x)
-            call    choca_obstaculo         ; decorado fijo y caracol
+            call    mira_bala               ; ¿hay algo en el camino?
             jr      nc,ab1_pinta
-            call    sonido_rebote
-ab1_muere:
+            ld      a,(b1_y)
+            ld      b,a
+            ld      a,(b1_x)
+            call    abre_agujero            ; le arranca unos pixeles
             xor     a
             ld      (b1_act),a
-            ret
+            jp      sonido_rebote
 ab1_pinta:
             ld      a,(b1_y)
             ld      b,a
@@ -378,21 +438,46 @@ actualiza_bala2:
             ret     nc
             jp      impacto_poli
 ab2_decorado:
+            ld      a,(b1_act)          ; ¿se cruza con la otra bala?
+            or      a
+            jr      z,ab2_mira
+            ld      a,(b2_x)
+            ld      hl,b1_x
+            sub     (hl)
+            jr      nc,ab2_dx
+            neg
+ab2_dx:
+            cp      4
+            jr      nc,ab2_mira
+            ld      a,(b2_y)
+            ld      hl,b1_y
+            sub     (hl)
+            jr      nc,ab2_dy
+            neg
+ab2_dy:
+            cp      2
+            jr      nc,ab2_mira
+            ld      a,(b1_y)            ; las dos se anulan en el aire
+            ld      b,a
+            ld      a,(b1_x)
+            call    bala_xor
+            xor     a
+            ld      (b1_act),a
+            ld      (b2_act),a
+            jp      sonido_rebote
+ab2_mira:
             ld      a,(b2_y)
             ld      b,a
             ld      a,(b2_x)
-            call    choca_caja              ; la caja se va rompiendo
-            jr      c,ab2_muere
-            ld      a,(b2_y)
-            ld      b,a
-            ld      a,(b2_x)
-            call    choca_obstaculo         ; decorado fijo y caracol
+            call    mira_bala               ; ¿hay algo en el camino?
             jr      nc,ab2_pinta
-            call    sonido_rebote
-ab2_muere:
+            ld      a,(b2_y)
+            ld      b,a
+            ld      a,(b2_x)
+            call    abre_agujero            ; le arranca unos pixeles
             xor     a
             ld      (b2_act),a
-            ret
+            jp      sonido_rebote
 ab2_pinta:
             ld      a,(b2_y)
             ld      b,a
@@ -402,18 +487,42 @@ ab2_pinta:
 ;=====================================================================
 ; IMPACTOS
 ;=====================================================================
-impacto_ladron:                             ; acierta el policia
+impacto_ladron:                             ; cae el bandido
             ld      hl,puntos1
             inc     (hl)
+            ld      a,(p2_y)
+            ld      c,COL_P2
             jr      impacto_comun
-impacto_poli:                               ; acierta el ladron
+impacto_poli:                               ; cae el sheriff
             ld      hl,puntos2
             inc     (hl)
-impacto_comun:
+            ld      a,(p1_y)
+            ld      c,COL_P1
+impacto_comun:                              ; A = y del caido, C = su columna
+            ld      (caido_y),a
+            ld      a,c
+            ld      (caido_col),a
+            call    hud_puntos              ; el tanteo sube al momento
             call    sonido_impacto
-            call    hud_puntos
-            ; fin de ronda: quita las balas en vuelo y recoloca a los dos
-            ld      a,(b1_act)
+            ld      a,(caido_col)           ; se cae redondo donde estaba
+            ld      c,a
+            ld      a,(caido_y)
+            ld      b,ALTO_SPR
+            call    borra_jugador
+            ld      a,ANCHO_JUG
+            ld      (ancho_bloque),a
+            ld      a,(caido_col)
+            ld      c,a
+            ld      a,(caido_y)
+            add     a,ALTO_SPR-16           ; el cuerpo queda a sus pies
+            ld      de,spr_muerto
+            ld      b,16
+            call    dibuja_bloque
+            ld      b,50                    ; un segundo para que se vea
+ic_ve:
+            halt
+            djnz    ic_ve
+            ld      a,(b1_act)              ; fuera las balas que quedaran
             or      a
             jr      z,ic_bala2
             ld      a,(b1_y)
@@ -425,30 +534,202 @@ impacto_comun:
 ic_bala2:
             ld      a,(b2_act)
             or      a
-            jr      z,ic_borra
+            jr      z,ic_funeral
             ld      a,(b2_y)
             ld      b,a
             ld      a,(b2_x)
             call    bala_xor
             xor     a
             ld      (b2_act),a
-ic_borra:
-            ld      a,(p1_y)
-            ld      c,COL_P1
-            ld      b,ALTO_SPR
-            call    borra_jugador
-            ld      a,(p2_y)
-            ld      c,COL_P2
-            ld      b,ALTO_SPR
-            call    borra_jugador
+ic_funeral:
+            call    funeral
             call    coloca_jugadores
-            ld      b,40                    ; pausa entre rondas
+            call    dibuja_caracol
+            ld      b,25
 ic_pausa:
             halt
             djnz    ic_pausa
             ret
 
 ;=====================================================================
+; EL FUNERAL
+;=====================================================================
+;---------------------------------------------------------------------
+; funeral - se para la jugada: suena la marcha funebre mientras la
+;   carreta entra, carga el ataud y se lo lleva fuera de la pantalla.
+;   Son unos cinco segundos.  El decorado se guarda antes y se repone
+;   despues, con los agujeros que ya tuviera.
+;---------------------------------------------------------------------
+funeral:
+            di                              ; la musica se lleva el reloj
+            call    guarda_decorado
+            call    limpia_campo
+            ld      hl,txt_rip
+            ld      b,5
+            ld      c,8
+            call    print_str
+            ld      a,ANCHO_JUG             ; el caido, en el suelo
+            ld      (ancho_bloque),a
+            ld      a,ESC_CUERPO_Y
+            ld      c,ESC_CUERPO_COL
+            ld      de,spr_muerto
+            ld      b,16
+            call    dibuja_bloque
+            ld      hl,musica_funeral       ; marcha funebre desde el principio
+            ld      (mus_ptr),hl
+            ld      (mus_base),hl
+            xor     a
+            ld      (mus_ticks),a
+            ld      (esc_x),a
+fun_ida:                                    ; la carreta entra por la izquierda
+            call    musica_tick
+            call    dibuja_carreta_esc
+            ld      a,(esc_x)
+            add     a,ESC_PASO
+            ld      (esc_x),a
+            cp      ESC_PARADA
+            jr      c,fun_ida
+            ld      b,15                    ; se para a cargar
+fun_carga:
+            push    bc
+            call    musica_tick
+            pop     bc
+            djnz    fun_carga
+            ld      a,ANCHO_JUG
+            ld      (ancho_bloque),a
+            ld      a,ESC_CUERPO_Y
+            ld      c,ESC_CUERPO_COL
+            ld      b,16
+            call    borra_bloque            ; ya va dentro del ataud
+fun_vuelta:                                 ; y se lo lleva
+            call    musica_tick
+            call    dibuja_carreta_esc
+            call    dibuja_ataud_esc
+            ld      a,(esc_x)
+            add     a,ESC_PASO
+            ld      (esc_x),a
+            cp      ESC_FIN
+            jr      c,fun_vuelta
+            call    limpia_campo
+            call    restaura_decorado
+            ld      hl,musica               ; deja lista la del menu
+            ld      (mus_base),hl
+            ei
+            ret
+
+dibuja_carreta_esc:
+            ld      a,(esc_x)
+            ld      (mov_x),a
+            ld      a,ESC_CARRETA_Y
+            ld      (mov_y),a
+            ld      a,CARRETA_ANCHO
+            ld      (ancho_bloque),a
+            ld      a,CARRETA_ALTO
+            ld      (mov_alto),a
+            ld      hl,BUF_CARRETA
+            ld      de,CARRETA_BYTES
+            jp      dibuja_movil
+
+dibuja_ataud_esc:
+            ld      a,(esc_x)
+            ld      (mov_x),a
+            ld      a,ESC_ATAUD_Y
+            ld      (mov_y),a
+            ld      a,ATAUD_ANCHO
+            ld      (ancho_bloque),a
+            ld      a,ATAUD_ALTO
+            ld      (mov_alto),a
+            ld      hl,BUF_ATAUD
+            ld      de,ATAUD_BYTES
+            jp      dibuja_movil
+
+;---------------------------------------------------------------------
+; limpia_campo - borra el terreno de juego y deja el marcador
+;---------------------------------------------------------------------
+limpia_campo:
+            ld      a,MIN_Y
+            ld      c,0
+            call    scr_addr
+            ld      b,192-MIN_Y
+lcampo_fila:
+            push    bc
+            push    hl
+            ld      b,32
+lcampo_col:
+            ld      (hl),0
+            inc     l
+            djnz    lcampo_col
+            pop     hl
+            call    down_hl
+            pop     bc
+            djnz    lcampo_fila
+            ret
+
+;---------------------------------------------------------------------
+; guarda_decorado / restaura_decorado - copian los trozos de pantalla
+;   del decorado a un buffer y al reves, para que el funeral no borre
+;   los agujeros que las balas le hayan hecho
+;---------------------------------------------------------------------
+guarda_decorado:
+            ld      a,1
+            jr      copia_decorado
+restaura_decorado:
+            xor     a
+copia_decorado:                             ; A = 1 guardar, 0 restaurar
+            ld      (dec_modo),a
+            ld      hl,decorado
+            ld      (dec_tabla),hl
+            ld      hl,BUF_DECORADO
+            ld      (dec_buf),hl
+cd_pieza:
+            ld      hl,(dec_tabla)
+            ld      a,(hl)
+            or      a
+            ret     z                       ; fin de la tabla
+            ld      c,(hl)                  ; columna
+            inc     hl
+            ld      d,(hl)                  ; y
+            inc     hl
+            ld      b,(hl)                  ; filas
+            inc     hl
+            ld      a,(hl)                  ; ancho
+            ld      (dec_ancho),a
+            inc     hl
+            ld      (dec_tabla),hl
+            ld      a,d
+            call    scr_addr
+cd_fila:
+            push    bc
+            ld      a,(dec_ancho)
+            ld      b,a
+            ld      de,(dec_buf)
+cd_byte:
+            ld      a,(dec_modo)
+            or      a
+            jr      z,cd_repone
+            ld      a,(hl)                  ; guardar
+            ld      (de),a
+            jr      cd_sigue
+cd_repone:
+            ld      a,(de)                  ; reponer
+            ld      (hl),a
+cd_sigue:
+            inc     de
+            inc     l
+            djnz    cd_byte
+            ld      (dec_buf),de
+            ld      a,(dec_ancho)           ; al principio de la fila
+            ld      e,a
+            ld      a,l
+            sub     e
+            ld      l,a
+            call    down_hl
+            pop     bc
+            djnz    cd_fila
+            jr      cd_pieza
+
+;=====================================================================
+; MOVIMIENTO DE UN JUGADOR;=====================================================================
 ; MOVIMIENTO DE UN JUGADOR
 ;   entrada: A = y actual, C = columna, DE = sprite
 ;   salida : A = y nueva
@@ -630,12 +911,12 @@ genera_desplazados:
             ld      (gen_n),a
 gd_copia:
             push    hl
-            ld      a,CARACOL_ALTO
+            ld      a,(gen_alto)
             ld      (gen_filas),a
 gd_fila:
             xor     a
             ld      (gen_resto),a
-            ld      a,CARACOL_ANCHO
+            ld      a,(gen_ancho)
             ld      (gen_bytes),a
 gd_byte:
             ld      a,(gen_n)
@@ -678,104 +959,165 @@ gd_junta:
             ret
 
 ;---------------------------------------------------------------------
-; actualiza_caracol - lo mueve un pixel cada CARACOL_LENTO fotogramas
-;   y le da la vuelta al llegar a cada extremo
+; azar - numerito pseudoaleatorio (registro de desplazamiento realimentado)
+;---------------------------------------------------------------------
+azar:
+            ld      a,(semilla)
+            add     a,a
+            jr      nc,az_ok
+            xor     %00011101
+az_ok:
+            or      a
+            jr      nz,az_guarda
+            ld      a,%01010011             ; que no se quede clavado en cero
+az_guarda:
+            ld      (semilla),a
+            ret
+
+;---------------------------------------------------------------------
+; actualiza_caracol - pasea por la parte baja del campo: avanza,
+;   rebota en los lados y cada tantos pasos cambia de altura y de
+;   velocidad, para que no vaya siempre igual
 ;---------------------------------------------------------------------
 actualiza_caracol:
             ld      a,(caracol_t)
             inc     a
-            cp      CARACOL_LENTO
+            ld      hl,caracol_paso
+            cp      (hl)
             jr      nc,ac_mueve
             ld      (caracol_t),a
             ret
 ac_mueve:
             xor     a
             ld      (caracol_t),a
-            ld      a,(caracol_dir)
+            ld      a,(caracol_dir)         ; --- a lo ancho
             or      a
             jr      nz,ac_izquierda
-            ld      a,(caracol_x)           ; va hacia la derecha
+            ld      a,(caracol_x)
             inc     a
             cp      CARACOL_MAX+1
-            jr      c,ac_pinta
+            jr      c,ac_x
             ld      a,1
             ld      (caracol_dir),a
             ld      a,CARACOL_MAX
-            jr      ac_pinta
+            jr      ac_x
 ac_izquierda:
             ld      a,(caracol_x)
             dec     a
             cp      CARACOL_MIN
-            jr      nc,ac_pinta
+            jr      nc,ac_x
             xor     a
             ld      (caracol_dir),a
             ld      a,CARACOL_MIN
-ac_pinta:
+ac_x:
             ld      (caracol_x),a
+            ld      a,(caracol_dy)          ; --- y a lo alto
+            or      a
+            jr      z,ac_cuenta
+            dec     a
+            jr      z,ac_baja
+            ld      a,(caracol_y)
+            dec     a
+            cp      CARACOL_MIN_Y
+            jr      nc,ac_y
+            ld      a,CARACOL_MIN_Y
+            jr      ac_y
+ac_baja:
+            ld      a,(caracol_y)
+            inc     a
+            cp      CARACOL_MAX_Y+1
+            jr      c,ac_y
+            ld      a,CARACOL_MAX_Y
+ac_y:
+            ld      (caracol_y),a
+ac_cuenta:
+            ld      hl,caracol_n            ; cada tantos pasos, otra idea
+            dec     (hl)
+            jr      nz,ac_pinta
+            call    azar
+            and     %00000011
+            cp      3
+            jr      c,ac_dy
+            xor     a                       ; 0 y 3 = seguir a la misma altura
+ac_dy:
+            ld      (caracol_dy),a
+            call    azar
+            and     %00000011
+            add     a,2                     ; un pixel cada 2 a 5 fotogramas
+            ld      (caracol_paso),a
+            call    azar
+            and     %00011111
+            add     a,16                    ; y aguanta entre 16 y 47 pasos
+            ld      (caracol_n),a
+ac_pinta:
             ; cae en dibuja_caracol
 
 ;---------------------------------------------------------------------
-; dibuja_caracol - vuelca la copia que toca segun el pixel exacto
+; dibuja_caracol - la copia que toca segun el pixel exacto y el sentido
 ;---------------------------------------------------------------------
 dibuja_caracol:
-            ld      hl,0
-            ld      de,CARACOL_BYTES
             ld      a,(caracol_x)
-            and     %00000111               ; copia = desplazamiento en pixeles
-            jr      z,dc_base
-            ld      b,a
-dc_suma:
-            add     hl,de
-            djnz    dc_suma
-dc_base:
-            ld      de,BUF_CARACOL_D
+            ld      (mov_x),a
+            ld      a,(caracol_y)
+            ld      (mov_y),a
+            ld      a,CARACOL_ANCHO
+            ld      (ancho_bloque),a
+            ld      a,CARACOL_ALTO
+            ld      (mov_alto),a
+            ld      hl,BUF_CARACOL_D
             ld      a,(caracol_dir)
             or      a
             jr      z,dc_sentido
-            ld      de,BUF_CARACOL_I
+            ld      hl,BUF_CARACOL_I
 dc_sentido:
+            ld      de,CARACOL_BYTES
+            ; cae en dibuja_movil
+
+;---------------------------------------------------------------------
+; dibuja_movil - vuelca un sprite pre-desplazado en cualquier pixel
+;   entrada: HL = base de las 8 copias, DE = bytes por copia,
+;            (mov_x), (mov_y), (ancho_bloque), (mov_alto)
+;---------------------------------------------------------------------
+dibuja_movil:
+            ld      a,(mov_x)
+            and     %00000111               ; la copia = desplazamiento
+            jr      z,dm_base
+            ld      b,a
+dm_suma:
             add     hl,de
+            djnz    dm_suma
+dm_base:
             ex      de,hl                   ; DE = datos ya desplazados
-            ld      a,CARACOL_ANCHO
-            ld      (ancho_bloque),a
-            ld      a,(caracol_x)
+            ld      a,(mov_x)
             rrca
             rrca
             rrca
             and     %00011111
             ld      c,a
-            ld      a,CARACOL_Y
-            ld      b,CARACOL_ALTO
+            ld      a,(mov_alto)
+            ld      b,a
+            ld      a,(mov_y)
             jp      dibuja_bloque
 
 ;---------------------------------------------------------------------
-; dibuja_cajas - las dos cajas, tramo a tramo segun lo que quede en pie
+; dibuja_cajas - las dos cajas enteras (las balas ya las iran picando)
 ;---------------------------------------------------------------------
 dibuja_cajas:
-            ld      hl,caja1
             ld      c,CAJA1_COL
             call    dibuja_caja
-            ld      hl,caja2
             ld      c,CAJA2_COL
-dibuja_caja:                                ; HL = estado, C = columna
+dibuja_caja:                                ; C = columna
             ld      a,2
             ld      (ancho_bloque),a
-            ld      a,(hl)
-            ld      (caja_masc),a
             ld      a,CAJA_Y
             ld      (caja_fila),a
-            ld      b,4
+            ld      b,4                     ; cuatro tramos iguales
 dcaja_bucle:
             push    bc
-            ld      a,(caja_masc)
-            srl     a
-            ld      (caja_masc),a
-            jr      nc,dcaja_sig            ; ese tramo ya no esta
             ld      a,(caja_fila)
             ld      de,spr_caja
             ld      b,8
             call    dibuja_bloque
-dcaja_sig:
             ld      a,(caja_fila)
             add     a,8
             ld      (caja_fila),a
@@ -784,145 +1126,92 @@ dcaja_sig:
             ret
 
 ;---------------------------------------------------------------------
-; choca_caja - la bala contra las cajas: si el tramo esta en pie lo
-;   rompe y se para; si ya estaba roto, pasa por el hueco
-;   entrada: A = x de la bala, B = y
-;   salida : carry = 1 si la caja detiene la bala
+; mira_bala - ¿hay algo dibujado donde va a caer la bala?
+;   Con esto una bala choca con lo primero que se cruza, sea el
+;   decorado, una caja o el caracol, sin tablas ni estados aparte.
+;   entrada: A = x, B = y
+;   salida : carry = 1 si hay algo
 ;---------------------------------------------------------------------
-choca_caja:
-            ld      (tmp_x),a
-            ld      a,b
-            ld      (tmp_y),a
-            inc     a                       ; fila de abajo de la bala
-            sub     CAJA_Y
-            jr      c,cc_no                 ; pasa por encima
-            cp      CAJA_ALTO+1
-            jr      nc,cc_no                ; pasa por debajo
-            ld      a,(tmp_x)
-            add     a,3
-            cp      CAJA1_COL*8
-            jr      c,cc_no                 ; aun no ha llegado a la caja 1
-            ld      a,(tmp_x)
-            cp      CAJA1_COL*8+16
-            jr      c,cc_caja1
-            ld      a,(tmp_x)
-            add     a,3
-            cp      CAJA2_COL*8
-            jr      c,cc_no                 ; entre las dos cajas
-            ld      a,(tmp_x)
-            cp      CAJA2_COL*8+16
-            jr      c,cc_caja2
-cc_no:
-            or      a                       ; sin acarreo: la bala sigue
-            ret
-cc_caja2:
-            ld      hl,caja2
-            ld      c,CAJA2_COL
-            jr      cc_tramo
-cc_caja1:
-            ld      hl,caja1
-            ld      c,CAJA1_COL
-cc_tramo:
-            ld      a,(tmp_y)               ; tramo = (y - CAJA_Y) / 8
-            sub     CAJA_Y
-            jr      nc,cc_dentro
-            xor     a                       ; la bala asoma por arriba
-cc_dentro:
-            rrca
-            rrca
-            rrca
-            and     %00000011
-            ld      b,a                     ; B = numero de tramo (0 a 3)
-            ld      a,CAJA_Y                ; y del tramo y bit que le toca
-            ld      e,1
-            inc     b
-cc_altura:
-            dec     b
-            jr      z,cc_prueba
-            add     a,8
-            sla     e
-            jr      cc_altura
-cc_prueba:
-            ld      (caja_fila),a
-            ld      a,e                     ; E = bit del tramo
-            and     (hl)
-            ret     z                       ; ya estaba roto: la bala pasa
+mira_bala:
+            call    patron_bala             ; DE = patron, HL = pantalla
             ld      a,(hl)
-            xor     e                       ; se lo lleva por delante
+            and     d
+            jr      nz,mb_choca
+            inc     l
+            ld      a,(hl)
+            dec     l
+            and     e
+            jr      nz,mb_choca
+            call    down_hl
+            ld      a,(hl)
+            and     d
+            jr      nz,mb_choca
+            inc     l
+            ld      a,(hl)
+            dec     l
+            and     e
+            jr      nz,mb_choca
+            or      a                       ; carry a cero: via libre
+            ret
+mb_choca:
+            scf
+            ret
+
+;---------------------------------------------------------------------
+; abre_agujero - la bala se lleva por delante unos pocos pixeles
+;   (6 de ancho por 4 de alto) del objeto contra el que choca
+;   entrada: A = x, B = y
+;---------------------------------------------------------------------
+abre_agujero:
+            dec     b                       ; una fila por encima
+            call    patron_ancho            ; DE = patron de 6 pixeles
+            ld      b,4
+ag_fila:
+            ld      a,d
+            cpl
+            and     (hl)
             ld      (hl),a
-            ld      a,2
-            ld      (ancho_bloque),a
-            ld      a,(caja_fila)
-            ld      b,8
-            call    borra_bloque
-            call    sonido_rotura
-            scf
+            inc     l
+            ld      a,e
+            cpl
+            and     (hl)
+            ld      (hl),a
+            dec     l
+            call    down_hl
+            djnz    ag_fila
             ret
 
 ;---------------------------------------------------------------------
-; choca_obstaculo - mira si la bala toca algo del decorado
-;   entrada: A = x de la bala, B = y
-;   salida : carry = 1 si choca
+; patron_bala / patron_ancho - patron desplazado al pixel exacto y
+;   direccion de pantalla.  entrada: A = x, B = y
+;   salida: D y E = las dos mitades del patron, HL = pantalla
 ;---------------------------------------------------------------------
-choca_obstaculo:
-            ld      (tmp_x),a
-            ld      a,b
-            ld      (tmp_y),a
-            ld      a,(caracol_x)           ; el caracol, que va andando
-            ld      b,a
-            add     a,CARACOL_ANCHO*8-1
+patron_bala:
+            ld      hl,0xF000               ; 4 pixeles
+            jr      patron
+patron_ancho:
+            ld      hl,0xFC00               ; 6 pixeles
+patron:
             ld      c,a
-            ld      d,CARACOL_Y
-            ld      e,CARACOL_Y+CARACOL_ALTO-1
-            call    co_prueba
-            ret     c
-            ld      hl,obstaculos
-co_bucle:
-            ld      a,(hl)                  ; x0 (0 = fin de la tabla)
-            or      a
-            ret     z
-            ld      b,a
-            inc     hl
-            ld      c,(hl)                  ; x1
-            inc     hl
-            ld      d,(hl)                  ; y0
-            inc     hl
-            ld      e,(hl)                  ; y1
-            inc     hl
+            and     %00000111
+            jr      z,pat_listo
+            ld      d,a
+pat_desp:
+            srl     h
+            rr      l
+            dec     d
+            jr      nz,pat_desp
+pat_listo:
+            ld      a,c
+            rrca
+            rrca
+            rrca
+            and     %00011111
+            ld      c,a
+            ld      a,b
             push    hl
-            call    co_prueba
-            pop     hl
-            ret     c
-            jr      co_bucle
-
-;---------------------------------------------------------------------
-; co_prueba - la bala guardada en (tmp_x, tmp_y) contra un rectangulo
-;   entrada: B = x0, C = x1, D = y0, E = y1
-;   salida : carry = 1 si se tocan
-;---------------------------------------------------------------------
-co_prueba:
-            ld      a,(tmp_x)
-            add     a,3                     ; ultimo pixel de la bala
-            cp      b
-            jr      c,cp_no                 ; la bala acaba antes
-            ld      a,(tmp_x)
-            cp      c
-            jr      z,cp_mira_y
-            jr      nc,cp_no                ; la bala empieza despues
-cp_mira_y:
-            ld      a,(tmp_y)
-            inc     a                       ; fila de abajo de la bala
-            cp      d
-            jr      c,cp_no                 ; pasa por encima
-            ld      a,(tmp_y)
-            cp      e
-            jr      z,cp_choca
-            jr      nc,cp_no                ; pasa por debajo
-cp_choca:
-            scf
-            ret
-cp_no:
-            or      a                       ; carry a cero: no se tocan
+            call    scr_addr
+            pop     de                      ; D y E = patron
             ret
 
 ;---------------------------------------------------------------------
@@ -933,27 +1222,7 @@ cp_no:
 ;   entrada: A = x en pixeles, B = y
 ;---------------------------------------------------------------------
 bala_xor:
-            ld      c,a
-            and     %00000111               ; desplazamiento dentro del byte
-            ld      hl,0xF000               ; patron de 4 pixeles
-            jr      z,bx_listo
-            ld      d,a
-bx_desp:
-            srl     h
-            rr      l
-            dec     d
-            jr      nz,bx_desp
-bx_listo:
-            ld      a,c
-            rrca
-            rrca
-            rrca
-            and     %00011111
-            ld      c,a                     ; C = columna
-            ld      a,b                     ; A = y
-            push    hl
-            call    scr_addr
-            pop     de                      ; D y E = las dos mitades del patron
+            call    patron_bala             ; DE = patron, HL = pantalla
             call    bx_fila
             call    down_hl
 bx_fila:
@@ -1141,6 +1410,7 @@ menu_flash:
             di                              ; la melodia necesita el reloj entero
             ld      hl,musica
             ld      (mus_ptr),hl
+            ld      (mus_base),hl
             xor     a
             ld      (mus_ticks),a
 menu_espera:
@@ -1385,7 +1655,7 @@ musica_tick:
             ld      a,(hl)
             cp      0xFF
             jr      nz,mt_nota
-            ld      hl,musica               ; se acabo: vuelta a empezar
+            ld      hl,(mus_base)           ; se acabo: vuelta a empezar
             ld      a,(hl)
 mt_nota:
             ld      (mus_per),a
@@ -1639,11 +1909,13 @@ txt_j2b:         DEFB "P=ARRIBA  L=ABAJO",0
 txt_j2c:         DEFB "B=DISPARO",0
 txt_reglas:      DEFB "5 IMPACTOS PARA GANAR",0
 txt_tecla:       DEFB "PULSA CUALQUIER TECLA",0
+txt_rip:         DEFB "DESCANSE EN PAZ",0
 txt_gana_poli:   DEFB "GANA EL SHERIFF",0
 txt_gana_ladron: DEFB "GANA EL BANDIDO",0
 txt_final:       DEFB "RESULTADO",0
 
-spr_caracol_d:           ; caracol mirando a la derecha, 48x24 con margenes
+spr_caracol_d:           ; caracol a la derecha, 48x26 (margen a los cuatro lados)
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ................................................
             DEFB    %00000000, %00000000, %00000000, %00000000, %00100100, %00000000   ; ..................................#..#..........
             DEFB    %00000000, %00000000, %00000000, %00000000, %00100100, %00000000   ; ..................................#..#..........
             DEFB    %00000000, %00000000, %00000000, %00000000, %00010100, %00000000   ; ...................................#.#..........
@@ -1668,8 +1940,10 @@ spr_caracol_d:           ; caracol mirando a la derecha, 48x24 con margenes
             DEFB    %00000000, %00111111, %11111111, %11111111, %11111100, %00000000   ; ..........############################..........
             DEFB    %00000000, %00011111, %11111111, %11111111, %11111000, %00000000   ; ...........##########################...........
             DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ................................................
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ................................................
 
-spr_caracol_i:           ; caracol mirando a la izquierda
+spr_caracol_i:           ; caracol a la izquierda
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ................................................
             DEFB    %00000000, %00100100, %00000000, %00000000, %00000000, %00000000   ; ..........#..#..................................
             DEFB    %00000000, %00100100, %00000000, %00000000, %00000000, %00000000   ; ..........#..#..................................
             DEFB    %00000000, %00101000, %00000000, %00000000, %00000000, %00000000   ; ..........#.#...................................
@@ -1694,6 +1968,73 @@ spr_caracol_i:           ; caracol mirando a la izquierda
             DEFB    %00000000, %00111111, %11111111, %11111111, %11111100, %00000000   ; ..........############################..........
             DEFB    %00000000, %00011111, %11111111, %11111111, %11111000, %00000000   ; ...........##########################...........
             DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ................................................
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ................................................
+
+spr_muerto:              ; el pistolero abatido, 24x16
+            DEFB    %00000000, %00000000, %00000000   ; ........................
+            DEFB    %00111000, %00000000, %00000000   ; ..###...................
+            DEFB    %01111100, %00000000, %00000000   ; .#####..................
+            DEFB    %00111000, %00000000, %00000000   ; ..###...................
+            DEFB    %00000000, %00000000, %00000000   ; ........................
+            DEFB    %00001111, %00000000, %00000000   ; ....####................
+            DEFB    %00011111, %10000000, %00000000   ; ...######...............
+            DEFB    %00011111, %10000000, %00000000   ; ...######...............
+            DEFB    %00001111, %00000000, %00000000   ; ....####................
+            DEFB    %00000011, %11111111, %11111111   ; ......##################
+            DEFB    %00000111, %11111111, %11111111   ; .....###################
+            DEFB    %00000011, %11111111, %11111111   ; ......##################
+            DEFB    %00000000, %00111100, %00011110   ; ..........####.....####.
+            DEFB    %00000000, %00111100, %00001111   ; ..........####......####
+            DEFB    %00000000, %00011100, %00000111   ; ...........###.......###
+            DEFB    %00000000, %00000000, %00000000   ; ........................
+
+spr_carreta_m:           ; carreta con margenes, 40x28, para moverla
+            DEFB    %00000000, %00000001, %11111111, %10000000, %00000000   ; ...............##########...............
+            DEFB    %00000000, %00000111, %11111111, %11100000, %00000000   ; .............##############.............
+            DEFB    %00000000, %00001111, %11111111, %11110000, %00000000   ; ............################............
+            DEFB    %00000000, %00011111, %11111111, %11111000, %00000000   ; ...........##################...........
+            DEFB    %00000000, %00011111, %10000001, %11111000, %00000000   ; ...........######......######...........
+            DEFB    %00000000, %00011111, %10000001, %11111000, %00000000   ; ...........######......######...........
+            DEFB    %00000000, %00011111, %00000000, %11111000, %00000000   ; ...........#####........#####...........
+            DEFB    %00000000, %00011111, %00000000, %11111000, %00000000   ; ...........#####........#####...........
+            DEFB    %00000000, %00011111, %00000000, %11111000, %00000000   ; ...........#####........#####...........
+            DEFB    %00000000, %00011111, %10000001, %11111000, %00000000   ; ...........######......######...........
+            DEFB    %00000000, %00011111, %10000001, %11111000, %00000000   ; ...........######......######...........
+            DEFB    %00000000, %00011111, %11000011, %11111000, %00000000   ; ...........#######....#######...........
+            DEFB    %00000000, %00011111, %11000011, %11111000, %00000000   ; ...........#######....#######...........
+            DEFB    %00000000, %00011111, %11000011, %11111000, %00000000   ; ...........#######....#######...........
+            DEFB    %00000000, %00011111, %11000011, %11111000, %00000000   ; ...........#######....#######...........
+            DEFB    %00000000, %00011111, %11000011, %11111000, %00000000   ; ...........#######....#######...........
+            DEFB    %00000000, %00111111, %11111111, %11111100, %00000000   ; ..........####################..........
+            DEFB    %00000000, %11111111, %11111111, %11111111, %00000000   ; ........########################........
+            DEFB    %00000000, %11111111, %11111111, %11111111, %00000000   ; ........########################........
+            DEFB    %00000000, %00000111, %10000001, %11100000, %00000000   ; .............####......####.............
+            DEFB    %00000000, %00001111, %11000011, %11110000, %00000000   ; ............######....######............
+            DEFB    %00000000, %00011000, %01100110, %00011000, %00000000   ; ...........##....##..##....##...........
+            DEFB    %00000000, %00011000, %01100110, %00011000, %00000000   ; ...........##....##..##....##...........
+            DEFB    %00000000, %00011000, %01100110, %00011000, %00000000   ; ...........##....##..##....##...........
+            DEFB    %00000000, %00011000, %01100110, %00011000, %00000000   ; ...........##....##..##....##...........
+            DEFB    %00000000, %00001111, %11000011, %11110000, %00000000   ; ............######....######............
+            DEFB    %00000000, %00000111, %10000001, %11100000, %00000000   ; .............####......####.............
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000   ; ........................................
+
+spr_ataud_m:             ; ataud con margenes, 40x16
+            DEFB    %00000000, %00000000, %11111111, %00000000, %00000000   ; ................########................
+            DEFB    %00000000, %00000001, %11111111, %10000000, %00000000   ; ...............##########...............
+            DEFB    %00000000, %00000011, %11100111, %11000000, %00000000   ; ..............#####..#####..............
+            DEFB    %00000000, %00000111, %11100111, %11100000, %00000000   ; .............######..######.............
+            DEFB    %00000000, %00000111, %10000001, %11100000, %00000000   ; .............####......####.............
+            DEFB    %00000000, %00000111, %10000001, %11100000, %00000000   ; .............####......####.............
+            DEFB    %00000000, %00000111, %11100111, %11100000, %00000000   ; .............######..######.............
+            DEFB    %00000000, %00000011, %11100111, %11000000, %00000000   ; ..............#####..#####..............
+            DEFB    %00000000, %00000011, %11100111, %11000000, %00000000   ; ..............#####..#####..............
+            DEFB    %00000000, %00000001, %11100111, %10000000, %00000000   ; ...............####..####...............
+            DEFB    %00000000, %00000001, %11111111, %10000000, %00000000   ; ...............##########...............
+            DEFB    %00000000, %00000000, %11111111, %00000000, %00000000   ; ................########................
+            DEFB    %00000000, %00000000, %11111111, %00000000, %00000000   ; ................########................
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000   ; ........................................
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000   ; ........................................
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000   ; ........................................
 
 spr_caja:                ; un tramo de caja, 16x8 (la caja son cuatro)
             DEFB    %11111111, %11111111   ; ################
@@ -1756,29 +2097,70 @@ musica:
             DEFB    0, 0, 4          ; silencio
             DEFB    0xFF
 
-; ---- obstaculos: x0, x1, y0, y1 (x0 = 0 cierra la tabla) -------------
-obstaculos:
-            DEFB    112, 135,  20,  47      ; carreta
-            DEFB     64,  79, 100, 131      ; cactus de abajo
-            DEFB    168, 183,  60,  91      ; cactus de arriba
+;---------------------------------------------------------------------
+; marcha funebre: Chopin, Sonata nº2 (1839, dominio publico), subida
+; una octava porque el bucle de retardo no da notas mas graves
+;---------------------------------------------------------------------
+musica_funeral:
+            DEFB    115, 56, 6  ; Bb (936 Hz)
+            DEFB    115, 56, 2  ; Bb (936 Hz)
+            DEFB    115, 56, 4  ; Bb (936 Hz)
+            DEFB    115, 56, 4  ; Bb (936 Hz)
+            DEFB    97, 67, 6   ; Db (1106 Hz)
+            DEFB    103, 63, 2  ; C (1043 Hz)
+            DEFB    103, 63, 4  ; C (1043 Hz)
+            DEFB    115, 56, 4  ; Bb (936 Hz)
+            DEFB    115, 56, 6  ; Bb (936 Hz)
+            DEFB    130, 50, 2  ; Ab (829 Hz)
+            DEFB    130, 50, 4  ; Ab (829 Hz)
+            DEFB    146, 44, 4  ; Gb (740 Hz)
+            DEFB    146, 44, 6  ; Gb (740 Hz)
+            DEFB    155, 42, 2  ; F (697 Hz)
+            DEFB    155, 42, 4  ; F (697 Hz)
+            DEFB    115, 56, 8  ; Bb (936 Hz)
+            DEFB    0, 0, 4            ; silencio
+            DEFB    0xFF
+
+; ---- trozos de pantalla que hay que salvar del funeral ---------------
+decorado:                                   ; columna, y, filas, ancho
+            DEFB    CARRETA_COL, CARRETA_Y, CARRETA_ALTO, 3
+            DEFB    CACTUS1_COL, CACTUS1_Y, CACTUS_ALTO, 2
+            DEFB    CACTUS2_COL, CACTUS2_Y, CACTUS_ALTO, 2
+            DEFB    CAJA1_COL, CAJA_Y, CAJA_ALTO, 2
+            DEFB    CAJA2_COL, CAJA_Y, CAJA_ALTO, 2
             DEFB    0
 
 ; ---- variables ------------------------------------------------------
 ancho_bloque:    DEFB ANCHO_JUG
 tmp_x:           DEFB 0
 tmp_y:           DEFB 0
-caja1:           DEFB CAJA_ENTERA        ; un bit por tramo en pie
-caja2:           DEFB CAJA_ENTERA
-caja_masc:       DEFB 0
 caja_fila:       DEFB 0
 caracol_x:       DEFB CARACOL_MIN
+caracol_y:       DEFB CARACOL_MAX_Y
 caracol_dir:     DEFB 0                  ; 0 = a la derecha, 1 = a la izquierda
+caracol_dy:      DEFB 0                  ; 0 = recto, 1 = baja, 2 = sube
 caracol_t:       DEFB 0
+caracol_paso:    DEFB 3                  ; fotogramas por pixel
+caracol_n:       DEFB 24                 ; pasos hasta cambiar de idea
+semilla:         DEFB 0x5A
+mov_x:           DEFB 0
+mov_y:           DEFB 0
+mov_alto:        DEFB 0
+caido_y:         DEFB 0
+caido_col:       DEFB 0
+esc_x:           DEFB 0
+dec_modo:        DEFB 0
+dec_ancho:       DEFB 0
+dec_tabla:       DEFW 0
+dec_buf:         DEFW 0
 gen_n:           DEFB 0
+gen_ancho:       DEFB CARACOL_ANCHO
+gen_alto:        DEFB CARACOL_ALTO
 gen_filas:       DEFB 0
 gen_bytes:       DEFB 0
 gen_resto:       DEFB 0
 mus_ptr:         DEFW 0
+mus_base:        DEFW 0
 mus_ticks:       DEFB 0
 mus_per:         DEFB 0
 mus_cic:         DEFB 0

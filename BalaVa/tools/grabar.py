@@ -120,52 +120,46 @@ class Grabadora:
 def guion(g):
     """La partida que se graba."""
     v = g.val
-    g.frames(110)                                     # pantalla de carga
-    g.frames(6, ['SPACE'])
-    g.frames(320)                                     # menu, con musica
-    g.frames(6, ['2'])                                # ver los controles
-    g.frames(150)
-    g.frames(6, ['SPACE'])
-    g.frames(120)                                     # otra vez el menu
-    g.frames(6, ['1'])                                # a jugar
+    g.frames(130)                                     # pantalla de carga
+    g.frames(8, ['SPACE'])
+    g.frames(300)                                     # menu, con musica
+    g.frames(8, ['2'])                                # los controles
+    g.frames(140)
+    g.frames(8, ['SPACE'])
+    g.frames(100)                                     # otra vez el menu
+    g.frames(8, ['1'])                                # a jugar
     g.frames(40)
 
     # el sheriff baja hasta su caja y le abre una tronera a tiros
     g.hasta(lambda: v('p1_y') >= 80, ['A'])
-    g.frames(10)
-    for _ in range(2):
+    g.frames(15)
+    for _ in range(3):
         g.frames(2, ['Z'])
-        g.frames(45)
-    g.frames(30)
+        g.frames(40)
+    g.frames(25)
 
-    # el bandido sube y dispara: el sheriff se aparta a tiempo
+    # un tiro contra el caracol, que anda por abajo
+    g.hasta(lambda: v('p1_y') >= 135, ['A'])
+    g.frames(2, ['Z'])
+    g.frames(70)
+
+    # los dos a la calle libre de arriba: duelo de verdad
+    g.hasta(lambda: v('p1_y') <= 40, ['Q'])
     g.hasta(lambda: v('p2_y') <= 60, ['P'])
-    g.frames(2, ['B'])
-    g.frames(20)
-    g.hasta(lambda: v('p1_y') <= 30, ['Q'])
-    g.frames(60)
-
-    # tiro contra el caracol: se lo come el bicho
-    g.hasta(lambda: v('p1_y') >= 125, ['A'])
-    g.frames(2, ['Z'])
-    g.frames(90)
-
-    # los dos a la calle libre de abajo y duelo de verdad
-    g.hasta(lambda: v('p1_y') >= 160, ['A'])
-    g.hasta(lambda: v('p2_y') >= 160, ['L'])
-    g.frames(20)
     g.frames(2, ['Z'])
     g.frames(30)
-    g.hasta(lambda: v('p2_y') <= 120, ['P'])          # esquiva a tiempo
-    g.frames(60)
-    g.hasta(lambda: v('p2_y') >= 160, ['L'])
-    g.frames(2, ['B'])                                # ahora dispara el bandido
-    g.frames(130)
-    g.hasta(lambda: v('p1_y') >= 160, ['A'])
-    g.hasta(lambda: v('p2_y') >= 160, ['L'])
-    g.frames(2, ['Z'])                                # y el sheriff devuelve
-    g.frames(140)
-    g.frames(60)
+    g.hasta(lambda: v('p2_y') >= 90, ['L'])           # el bandido esquiva
+    g.frames(50)
+
+    # y ahora si: impacto, caido y funeral entero
+    g.hasta(lambda: v('p2_y') <= 40, ['P'])
+    g.hasta(lambda: v('p1_y') <= 40, ['Q'])
+    g.frames(20)
+    g.frames(2, ['Z'])
+    g.hasta(lambda: v('puntos1') > 0, [], limite=200)
+    g.frames(60)                                      # el caido, a la vista
+    g.hasta(lambda: v('esc_x') >= 216, [], limite=400) # el funeral entero
+    g.frames(120)                                     # vuelta al juego
 
 
 def main():

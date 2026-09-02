@@ -26,7 +26,8 @@ def carga_probar():
 
 # guion: (fotogramas, teclas, comprobar)
 GUION = [
-    (20, [], 'pantalla'),                      # pantalla de carga
+    (50, [], 'pantalla'),                      # pantalla de carga (y las copias
+                                               # desplazadas, que tardan un poco)
     (6, ['SPACE'], None),
     (40, [], 'pantalla'),                      # menu
     (6, ['2'], None),
@@ -56,7 +57,8 @@ def main():
 
     sim = probar.lee_simbolos(os.path.join(RAIZ, 'build', 'balava.sym'))
     variables = ['p1_y', 'p2_y', 'b1_x', 'b1_act', 'b2_x', 'b2_act',
-                 'puntos1', 'puntos2', 'caracol_x', 'caracol_dir', 'caja1', 'caja2']
+                 'puntos1', 'puntos2', 'caracol_x', 'caracol_y', 'caracol_dir',
+                 'caracol_paso', 'semilla']
 
     m = probar.Spectrum(os.path.join(RAIZ, 'dist', 'balava.z80'))
     pasos = []

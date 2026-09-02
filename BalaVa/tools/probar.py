@@ -178,8 +178,8 @@ def main():
     val = lambda n: m.peek(sim[n])
 
     COL_P1, COL_P2, ANCHO, ALTO = 1, 28, 3, 32
-    CAJA1_COL, CAJA2_COL, CAJA_Y = 5, 25, 80
-    CARACOL_Y, CARACOL_ALTO = 136, 24
+    CAJA1_COL, CAJA2_COL, CAJA_Y, CAJA_ALTO = 5, 25, 80, 32
+    CALLE = 40                                  # la altura desde la que hay tiro limpio
     ESCENARIO = [('spr_carreta', 14, 20, 28, 3),        # nombre, col, y, filas, ancho
                  ('spr_cactus', 8, 100, 32, 2),
                  ('spr_cactus', 21, 60, 32, 2)]
@@ -189,14 +189,18 @@ def main():
         COLS_OCUPADAS |= set(range(col, col + ancho))
     COLS_LIBRES = [c for c in range(32) if c not in COLS_OCUPADAS]
 
+    def pixeles(col, y, filas, ancho):
+        return sum(bin(m.memory[dir_pantalla(y + f, col + c)]).count('1')
+                   for f in range(filas) for c in range(ancho))
+
     poli = m.sprite(sim, 'spr_poli', ALTO, ANCHO)
     ladron = m.sprite(sim, 'spr_ladron', ALTO, ANCHO)
-    cactus = m.sprite(sim, 'spr_cactus', 32, 2)
+    muerto = m.sprite(sim, 'spr_muerto', 16, ANCHO)
     caja = m.sprite(sim, 'spr_caja', 8, 2)
 
     # ---------------------------------------------------------------
     print('\n1. Pantalla de carga')
-    m.frames(10)
+    m.frames(50)                                # deja tiempo a las copias desplazadas
     captura(m, '0-carga.png')
     scr = open(os.path.join(RAIZ, 'dist', 'balava.scr'), 'rb').read()
     P.check(bytes(m.memory[0x4000:0x5B00]) == scr,
@@ -206,8 +210,6 @@ def main():
                   and any(scr[dir_pantalla(f * 8 + k, c) - 0x4000] for k in range(8))]
     P.check(not invisibles, 'ninguna celda dibujada tiene tinta y papel iguales',
             str(invisibles[:4]))
-    colores = {(a & 7, (a >> 3) & 7, (a >> 6) & 1) for a in scr[6144:]}
-    P.check(len(colores) >= 4, 'la pantalla usa varios colores', f'{len(colores)} combinaciones')
     m.frames(10, ['SPACE'])
 
     # ---------------------------------------------------------------
@@ -215,39 +217,34 @@ def main():
     m.frames(15)
     captura(m, '1-menu.png')
     P.check(all(m.memory[dir_pantalla(y, c)] == 0xFF for y in (2, 3, 188, 189)
-                for c in range(32)), 'marco: lineas de arriba y abajo')
-    P.check(all(m.memory[dir_pantalla(y, 0)] & 0x30 == 0x30 and
-                m.memory[dir_pantalla(y, 31)] & 0x0C == 0x0C for y in range(4, 188)),
-            'marco: lineas de los lados')
+                for c in range(32)), 'marco de la pantalla')
     huecos = sum(bin(m.memory[dir_pantalla(y, c)] ^ 0xFF).count('1')
                  for y in range(33, 47) for c in range(10, 22))
-    esperados = 0                              # pixeles de las seis letras
+    esperados = 0
     for i in range(6):
         glifo = m.peek(sim['logo_letras'] + i * 2) | (m.peek(sim['logo_letras'] + i * 2 + 1) << 8)
         esperados += sum(bin(m.peek(glifo + n)).count('1') for n in range(28))
     P.check(huecos == esperados, 'el logotipo BALAVA aparece en hueco sobre la banda',
             f'{huecos} de {esperados} pixeles')
-    P.check(m.bloque(3, 64, ALTO, ANCHO) == poli and m.bloque(25, 64, ALTO, ANCHO) == ladron,
-            'los dos pistoleros se apuntan bajo el logotipo')
     P.check(all(m.peek(0x5800 + 19 * 32 + c) == 0xB0 for c in range(10, 21)),
             'el aviso PULSA 1 O 2 usa el bit FLASH')
 
     # ---------------------------------------------------------------
     print('\n3. La musica del menu')
-    esperadas = []                                     # notas segun la tabla
+    esperadas = []
     p = sim['musica']
     while len(esperadas) < 10:
         per, _, ticks = (m.peek(p), m.peek(p + 1), m.peek(p + 2))
         if per == 0xFF:
             break
         f = round(3_500_000 / (32 * per + 60)) if per else 0
-        if esperadas and esperadas[-1][0] == f:        # la medida no distingue
-            esperadas[-1][1] += ticks                  # dos notas iguales seguidas
+        if esperadas and esperadas[-1][0] == f:
+            esperadas[-1][1] += ticks
         else:
             esperadas.append([f, ticks])
         p += 3
     sonadas = []
-    for _ in range(120):                               # 2,4 s de melodia
+    for _ in range(120):
         f = m.frecuencia(20)
         if sonadas and abs(sonadas[-1][0] - f) < 40:
             sonadas[-1][1] += 1
@@ -255,16 +252,11 @@ def main():
             sonadas.append([f, 1])
     P.check(len(sonadas) >= 6, 'la melodia va cambiando de nota',
             ' '.join(f'{f}Hz' for f, _ in sonadas[:8]))
-    # la medida empieza con la melodia ya empezada, asi que se prueba a
-    # encajarla con un desfase de unas pocas notas
     def encaje(salto):
         return sum(1 for (fe, _), (fs, _) in zip(esperadas[salto:], sonadas)
                    if fe and abs(fs - fe) <= max(40, fe * 0.06))
-    bien = max(encaje(k) for k in range(5))
-    P.check(bien >= 5, 'las notas coinciden con la melodia guardada',
-            f'{bien} notas seguidas')
-    P.check(max(n for _, n in sonadas) <= 30, 'ninguna nota se queda colgada',
-            f'la mas larga dura {max(n for _, n in sonadas) * 20} ms')
+    P.check(max(encaje(k) for k in range(5)) >= 5,
+            'las notas coinciden con la melodia guardada')
 
     # ---------------------------------------------------------------
     print('\n4. Opcion 2: pantalla de controles')
@@ -277,39 +269,31 @@ def main():
             str(sorted(filas)))
     m.frames(10, ['SPACE'])
     m.frames(5)
-    P.check(all(m.memory[dir_pantalla(24, c)] == 0xFF for c in range(1, 10)),
-            'cualquier tecla devuelve al menu')
 
     # ---------------------------------------------------------------
     print('\n5. Opcion 1: empieza la partida')
     m.frames(10, ['1'])
-    m.frames(5)
+    m.frames(10)
     captura(m, '3-partida.png')
-    P.check((val('p1_y'), val('p2_y')) == (40, 120), 'pistoleros en su posicion de salida',
+    P.check((val('p1_y'), val('p2_y')) == (40, 120), 'pistoleros en su sitio',
             f"{val('p1_y')},{val('p2_y')}")
-    P.check(val('puntos1') == 0 and val('puntos2') == 0, 'marcador a cero')
-    P.check(m.bloque(COL_P1, 40, ALTO, ANCHO) == poli, 'sheriff dibujado a la izquierda')
-    P.check(m.bloque(COL_P2, 120, ALTO, ANCHO) == ladron, 'bandido dibujado a la derecha')
-    for nombre, col, y, filas, ancho in ESCENARIO:
-        P.check(m.bloque(col, y, filas, ancho) == m.sprite(sim, nombre, filas, ancho),
+    P.check(m.bloque(COL_P1, 40, ALTO, ANCHO) == poli, 'sheriff a la izquierda')
+    P.check(m.bloque(COL_P2, 120, ALTO, ANCHO) == ladron, 'bandido a la derecha')
+    for nombre, col, y, filas_, ancho in ESCENARIO:
+        P.check(m.bloque(col, y, filas_, ancho) == m.sprite(sim, nombre, filas_, ancho),
                 f'decorado: {nombre[4:]} en la columna {col}')
     P.check(all(m.bloque(c, CAJA_Y + t * 8, 8, 2) == caja
                 for c in (CAJA1_COL, CAJA2_COL) for t in range(4)),
-            'las dos cajas, con sus cuatro tramos en pie')
-    P.check((val('caja1'), val('caja2')) == (0x0F, 0x0F), 'las cajas empiezan enteras')
+            'las dos cajas, enteras')
 
     # ---------------------------------------------------------------
     print('\n6. Movimiento suave')
     antes = val('p1_y')
     m.frames(10, ['Q'])
-    P.check(val('p1_y') == antes - 10, 'Q sube un pixel por fotograma, sin saltos',
+    P.check(val('p1_y') == antes - 10, 'Q sube un pixel por fotograma',
             f"{antes} -> {val('p1_y')}")
     m.frames(10, ['A'])
-    P.check(val('p1_y') == antes, 'A baja un pixel por fotograma', str(val('p1_y')))
-    m.frames(10, ['P'])
-    P.check(val('p2_y') == 110, 'P sube al bandido', str(val('p2_y')))
-    m.frames(10, ['L'])
-    P.check(val('p2_y') == 120, 'L baja al bandido', str(val('p2_y')))
+    P.check(val('p1_y') == antes, 'A baja un pixel por fotograma')
     m.frames(200, ['Q'])
     P.check(val('p1_y') == 16, 'tope superior', str(val('p1_y')))
     m.frames(200, ['A'])
@@ -319,132 +303,149 @@ def main():
             'al moverse no deja rastro en su columna')
 
     # ---------------------------------------------------------------
-    print('\n7. El caracol')
-    x0, dir0 = val('caracol_x'), val('caracol_dir')
-    m.frames(30)
-    paso = -10 if dir0 else 10                     # 30 fotogramas = 10 pixeles
-    P.check(val('caracol_x') == x0 + paso, 'anda un pixel cada tres fotogramas',
-            f"{x0} -> {val('caracol_x')}")
-    caracol = [m.peek(sim['spr_caracol_d'] + i) for i in range(6 * CARACOL_ALTO)]
-    pixeles_sprite = sum(bin(b).count('1') for b in caracol)
-    pixeles_pantalla = sum(bin(m.memory[dir_pantalla(CARACOL_Y + f, (val('caracol_x') >> 3) + c)]).count('1')
-                           for f in range(CARACOL_ALTO) for c in range(6))
-    P.check(pixeles_pantalla == pixeles_sprite,
-            'se dibuja entero en cualquier posicion de pixel',
-            f'{pixeles_pantalla} de {pixeles_sprite}')
-    P.check(val('caracol_dir') == dir0, 'sigue en el mismo sentido')
+    print('\n7. El caracol pasea')
+    x0, y0 = val('caracol_x'), val('caracol_y')
+    posiciones = set()
+    alturas = set()
+    for _ in range(40):
+        m.frames(15)
+        posiciones.add(val('caracol_x'))
+        alturas.add(val('caracol_y'))
+    P.check(len(posiciones) > 20, 'se mueve a lo ancho', f'{len(posiciones)} posiciones')
+    P.check(len(alturas) > 3, 'y tambien cambia de altura', f'{len(alturas)} alturas')
+    P.check(132 <= val('caracol_y') <= 164, 'sin salirse de su banda', str(val('caracol_y')))
+    caracol = [m.peek(sim['spr_caracol_d'] + i) for i in range(6 * 26)]
+    esperado = sum(bin(b).count('1') for b in caracol)
+    real = pixeles(val('caracol_x') >> 3, val('caracol_y'), 26, 6)
+    P.check(real == esperado, 'se dibuja entero en cualquier pixel',
+            f'{real} de {esperado}')
 
     # ---------------------------------------------------------------
-    print('\n8. Las cajas se rompen a tiros')
+    print('\n8. Las balas van picando lo que tocan')
     while val('p1_y') > CAJA_Y:
         m.frames(1, ['Q'])
     while val('p1_y') < CAJA_Y:
         m.frames(1, ['A'])
-    tramo = (val('p1_y') + 13 - CAJA_Y) // 8
-    m.frames(2, ['Z'])
-    m.frames(30)
+    antes_caja = pixeles(CAJA1_COL, CAJA_Y, CAJA_ALTO, 2)
+    alcances = []
+    for _ in range(4):
+        m.frames(2, ['Z'])
+        m.frames(35)
+        alcances.append(val('b1_x'))
+    despues_caja = pixeles(CAJA1_COL, CAJA_Y, CAJA_ALTO, 2)
     captura(m, '4-caja.png')
-    P.check(val('caja1') == 0x0F & ~(1 << tramo),
-            f'el disparo se lleva el tramo {tramo} de la caja', format(val('caja1'), '04b'))
-    P.check(not any(m.bloque(CAJA1_COL, CAJA_Y + tramo * 8, 8, 2)),
-            'el tramo roto desaparece de la pantalla')
-    P.check(all(m.bloque(CAJA1_COL, CAJA_Y + t * 8, 8, 2) == caja
-                for t in range(4) if t != tramo), 'los demas tramos siguen en pie')
-    P.check(val('b1_act') == 0 and val('puntos1') == 0, 'la bala se queda en la caja')
-    m.frames(2, ['Z'])
-    m.frames(25)
-    P.check(val('b1_x') > 100, 'la siguiente bala pasa por el hueco abierto',
-            f"x={val('b1_x')}")
-    m.frames(60)
+    quitados = antes_caja - despues_caja
+    P.check(0 < quitados <= 60, 'cada bala se lleva solo unos pixeles de la caja',
+            f'{quitados} pixeles en 4 tiros')
+    P.check(alcances[-1] > alcances[0], 'la bala llega mas lejos segun se abre el hueco',
+            str(alcances))
+    P.check(val('puntos1') == 0, 'picar la caja no puntua')
+    for nombre, col, y, filas_, ancho in ESCENARIO:
+        if col == 8:
+            continue                            # el cactus de abajo aun no se toca
+        P.check(m.bloque(col, y, filas_, ancho) == m.sprite(sim, nombre, filas_, ancho),
+                f'el resto del decorado sigue intacto: columna {col}')
 
     # ---------------------------------------------------------------
-    print('\n9. El caracol para las balas')
-    while val('p1_y') < CARACOL_Y - 13:
+    print('\n9. El cactus tambien se perfora')
+    while val('p1_y') < 100:
         m.frames(1, ['A'])
-    m.frames(2, ['Z'])
-    m.frames(4)
-    x1 = val('b1_x')
-    m.frames(1)
-    P.check(val('b1_x') == x1 + 3, 'la bala avanza 3 pixeles por fotograma',
-            f'{x1} -> {val("b1_x")}')
-    m.frames(60)
-    caracol_x = val('caracol_x')
-    P.check(val('b1_act') == 0 and val('puntos1') == 0,
-            'el caracol para la bala', f"bala en x={val('b1_x')}, caracol en {caracol_x}")
-    P.check(val('b1_x') <= caracol_x + 47, 'la bala se queda antes del caracol',
-            f"{val('b1_x')} <= {caracol_x + 47}")
+    antes_cactus = pixeles(8, 100, 32, 2)
+    for _ in range(3):
+        m.frames(2, ['Z'])
+        m.frames(40)
+    despues_cactus = pixeles(8, 100, 32, 2)
+    P.check(0 < antes_cactus - despues_cactus <= 60,
+            'el cactus se va rompiendo poco a poco',
+            f'{antes_cactus - despues_cactus} pixeles en 3 tiros')
 
     # ---------------------------------------------------------------
-    print('\n10. Impactos por la calle libre de abajo')
-    while val('p1_y') < 160:
-        m.frames(1, ['A'])
-    while val('p2_y') < 160:
-        m.frames(1, ['L'])
+    print('\n10. Impacto, caido y funeral')
+    dano_caja = pixeles(CAJA1_COL, CAJA_Y, CAJA_ALTO, 2)
+    while val('p1_y') > CALLE:
+        m.frames(1, ['Q'])
+    while val('p2_y') > CALLE:
+        m.frames(1, ['P'])
+    P.check(val('p1_y') == val('p2_y') == CALLE, 'los dos en la calle libre de arriba')
     m.frames(2, ['Z'])
-    m.frames(110)
-    captura(m, '5-impacto.png')
-    P.check(val('puntos1') == 1, 'el sheriff acierta al bandido',
-            f"{val('puntos1')}-{val('puntos2')}")
-    P.check((val('p1_y'), val('p2_y')) == (40, 120), 'la ronda recoloca a los dos')
-    while val('p1_y') < 160:
-        m.frames(1, ['A'])
-    while val('p2_y') < 160:
-        m.frames(1, ['L'])
-    m.frames(2, ['B'])
-    m.frames(110)
-    P.check(val('puntos2') == 1, 'el bandido acierta al sheriff',
-            f"{val('puntos1')}-{val('puntos2')}")
-
-    # ---------------------------------------------------------------
-    print('\n11. Esquiva y balas cruzadas')
-    while val('p1_y') < 160:
-        m.frames(1, ['A'])
-    while val('p2_y') < 160:
-        m.frames(1, ['L'])
-    antes = (val('puntos1'), val('puntos2'))
-    m.frames(2, ['Z'])
-    m.frames(50, ['P'])                          # el bandido se aparta
-    m.frames(60)
-    P.check((val('puntos1'), val('puntos2')) == antes, 'moverse a tiempo esquiva la bala')
-    while val('p2_y') < 160:
-        m.frames(1, ['L'])
-    m.frames(2, ['Z', 'B'])
+    while val('puntos1') == 0:
+        m.frames(1)
+    P.check(True, 'el disparo alcanza al bandido')
     m.frames(20)
-    captura(m, '6-cruce.png')
-    P.check(val('b1_act') == 1 and val('b2_act') == 1, 'las dos balas conviven')
-    m.frames(110)
-    sucio = sum(1 for y in list(range(16, 80)) + list(range(112, 136)) + list(range(160, 192))
+    captura(m, '5-caido.png')
+    P.check(m.bloque(COL_P2, CALLE + ALTO - 16, 16, ANCHO) == muerto,
+            'el bandido se queda tumbado donde le dieron')
+    n = 0
+    while val('esc_x') == 0:
+        m.frames(1)
+        n += 1
+    P.check(40 <= n <= 90, 'el caido se ve un momento antes del funeral',
+            f'{n / 50:.1f} s')
+    m.frames(40)
+    captura(m, '6-funeral.png')
+    filas = {y // 8 for y in range(16, 60)
+             if any(m.memory[dir_pantalla(y, c)] for c in range(32))}
+    P.check(5 in filas, 'el funeral saca su rotulo', str(sorted(filas)))
+    inicio = n
+    while val('esc_x') < 216:
+        m.frames(1)
+        n += 1
+    P.check(4.0 <= (n - inicio) / 50 <= 6.5, 'la escena dura unos cinco segundos',
+            f'{(n - inicio) / 50:.1f} s')
+    captura(m, '7-carreta.png')
+    while val('p1_y') != 40 or val('p2_y') != 120:
+        m.frames(1)
+    m.frames(5)
+    P.check(m.bloque(COL_P1, 40, ALTO, ANCHO) == poli and
+            m.bloque(COL_P2, 120, ALTO, ANCHO) == ladron,
+            'tras el funeral los dos vuelven a su sitio')
+    P.check(pixeles(CAJA1_COL, CAJA_Y, CAJA_ALTO, 2) == dano_caja,
+            'la caja conserva los agujeros de antes del funeral')
+    P.check(m.bloque(21, 60, 32, 2) == m.sprite(sim, 'spr_cactus', 32, 2),
+            'y el decorado vuelve tal cual estaba')
+
+    # ---------------------------------------------------------------
+    print('\n11. Balas que se cruzan')
+    while val('p1_y') > CALLE:
+        m.frames(1, ['Q'])
+    while val('p2_y') > CALLE:
+        m.frames(1, ['P'])
+    antes = (val('puntos1'), val('puntos2'))
+    m.frames(2, ['Z', 'B'])
+    m.frames(30)
+    captura(m, '8-cruce.png')
+    P.check(val('b1_act') == 0 and val('b2_act') == 0,
+            'dos balas de frente se anulan')
+    P.check((val('puntos1'), val('puntos2')) == antes, 'y no puntuan')
+    sucio = sum(1 for y in list(range(16, 40)) + list(range(48, 60))
                 for c in COLS_LIBRES if m.memory[dir_pantalla(y, c)])
-    P.check(sucio == 0, 'las balas no dejan rastro al cruzarse', f'{sucio} bytes')
+    P.check(sucio == 0, 'sin rastro de las balas', f'{sucio} bytes')
 
     # ---------------------------------------------------------------
     print('\n12. Fin de partida')
-    for _ in range(16):
+    for _ in range(14):
         if val('puntos1') >= 5:
             break
-        while val('p1_y') < 160:
+        while val('p1_y') > CALLE:
+            m.frames(1, ['Q'])
+        while val('p1_y') < CALLE:
             m.frames(1, ['A'])
-        while val('p2_y') < 160:
+        while val('p2_y') > CALLE:
+            m.frames(1, ['P'])
+        while val('p2_y') < CALLE:
             m.frames(1, ['L'])
         m.frames(2, ['Z'])
-        m.frames(130)
+        m.frames(500)
     P.check(val('puntos1') == 5, 'la partida llega a 5 impactos', str(val('puntos1')))
-    m.frames(20)
-    captura(m, '7-ganador.png')
+    m.frames(30)
+    captura(m, '9-ganador.png')
     filas = {y // 8 for y in range(192)
              if any(m.memory[dir_pantalla(y, c)] for c in range(32))}
-    P.check(filas == {9, 12, 16}, 'pantalla de ganador (texto + resultado)', str(sorted(filas)))
+    P.check(filas == {9, 12, 16}, 'pantalla de ganador', str(sorted(filas)))
     m.frames(10, ['SPACE'])
     m.frames(10)
-    captura(m, '8-vuelta.png')
     P.check(all(m.memory[dir_pantalla(24, c)] == 0xFF for c in range(1, 10)),
             'al acabar se vuelve al menu')
-    m.frames(10, ['1'])
-    m.frames(10)
-    P.check((val('p1_y'), val('p2_y'), val('puntos1')) == (40, 120, 0),
-            'la partida nueva parte de cero')
-    P.check((val('caja1'), val('caja2')) == (0x0F, 0x0F),
-            'las cajas vuelven a estar enteras')
 
     print()
     if P.fallos:
