@@ -85,7 +85,18 @@ ESC_PASO    EQU 1                   ; pixeles por fotograma
 ESC_PARADA  EQU 104                 ; donde recoge el ataud
 ESC_FIN     EQU 216                 ; y por donde se va
 
+; --- la pantalla de creditos -----------------------------------------
+CRE_COL     EQU 4                   ; ventana del scroll: x = 32 .. 223
+CRE_ANCHO   EQU 24
+CRE_Y       EQU 112                 ; sobre la chaqueta de la foto
+CRE_ALTO    EQU 56
+CRE_LINEAS  EQU 9                   ; renglones, uno cada 16 filas
+CRE_LARGO   EQU CRE_ALTO+CRE_LINEAS*16        ; el bucle del scroll
+CRE_TOTAL   EQU CRE_LARGO+CRE_ALTO            ; y la cola en blanco
+
 ; --- memoria de trabajo (fuera del binario) --------------------------
+BUF_LIENZO  EQU 0xC000              ; texto de los creditos, 256 x 24
+BUF_VENTANA EQU 0xD800              ; la franja de foto que tapa, 56 x 32
 BUF_CARACOL_D EQU 0xE000            ; 8 copias desplazadas de cada cosa
 BUF_CARACOL_I EQU BUF_CARACOL_D+CARACOL_BYTES*8
 BUF_CARRETA EQU BUF_CARACOL_I+CARACOL_BYTES*8
@@ -1987,28 +1998,32 @@ menu:
             call    bala_xor
             ; opciones
             ld      hl,txt_op1
-            ld      b,12
+            ld      b,11
             ld      c,10
             call    print_str
             ld      hl,txt_op2
-            ld      b,14
+            ld      b,13
             ld      c,10
             call    print_str
             ld      hl,txt_op3
-            ld      b,16
+            ld      b,15
+            ld      c,10
+            call    print_str
+            ld      hl,txt_op4
+            ld      b,17
             ld      c,10
             call    print_str
             ld      hl,txt_pulsa
             ld      b,19
-            ld      c,9
+            ld      c,7
             call    print_str
             ld      hl,txt_autor
             ld      b,21
             ld      c,3
             call    print_str
             ; el aviso parpadea con el bit FLASH de los atributos
-            ld      hl,ATTRS+(19*32)+9
-            ld      b,14
+            ld      hl,ATTRS+(19*32)+7
+            ld      b,17
 menu_flash:
             ld      (hl),0x80+ATTR_JUEGO
             inc     hl
@@ -2037,9 +2052,15 @@ menu_dos:
 menu_tres:
             ld      a,b
             and     %00000100               ; 3 = controles
-            jr      nz,menu_espera
+            jr      nz,menu_cuatro
             call    pantalla_controles
             jp      menu                    ; el menu queda fuera del alcance de JR
+menu_cuatro:
+            ld      a,b
+            and     %00001000               ; 4 = creditos
+            jr      nz,menu_espera
+            call    creditos
+            jp      menu
 
 ;---------------------------------------------------------------------
 ; pantalla_controles - la ayuda del menu
@@ -2084,6 +2105,286 @@ pantalla_controles:
             ld      c,5
             call    print_str
             jp      espera_tecla
+
+;=====================================================================
+; LOS CREDITOS
+;   La foto del autor, digitalizada a un bit, ocupa la pantalla entera;
+;   por encima sube el texto.  La ventana del scroll no se puede borrar
+;   y volver a pintar, porque debajo esta la foto: cada fotograma se
+;   recompone entera a partir de una copia de la foto ya oscurecida
+;   (BUF_VENTANA) y del lienzo con el texto ya dibujado (BUF_LIENZO),
+;   que se lee con POP para que salgan dos bytes de golpe.
+;=====================================================================
+creditos:
+            call    pinta_foto
+            call    arma_lienzo
+            call    arma_ventana
+            ld      hl,BUF_LIENZO
+            ld      (cre_ptr),hl
+            ld      hl,cancion_creditos
+            call    pon_cancion
+            call    espera_libre
+cre_bucle:
+            halt
+            call    ay_tick
+            call    cre_pinta
+            call    cre_avanza
+            ld      bc,0x00FE               ; cualquier tecla y fuera
+            in      a,(c)
+            and     %00011111
+            cp      %00011111
+            jr      z,cre_bucle
+            ret
+
+;---------------------------------------------------------------------
+; pinta_foto - vuelca los 6144 bytes de la foto y deja la pantalla en
+;   blanco y negro (papel 7, tinta 0), que es como esta tramada
+;---------------------------------------------------------------------
+pinta_foto:
+            ld      hl,foto
+            ld      de,SCREEN
+            ld      bc,6144
+            ldir
+            ld      hl,ATTRS
+            ld      de,ATTRS+1
+            ld      bc,768-1
+            ld      (hl),%00111000
+            ldir
+            ld      a,7
+            out     (0xFE),a                ; borde blanco
+            ret
+
+;---------------------------------------------------------------------
+; arma_lienzo - dibuja los rotulos en el lienzo del scroll
+;   Las CRE_ALTO primeras filas van en blanco, y otras tantas al final:
+;   asi el bucle puede leer una ventana entera desde cualquier fila sin
+;   salirse, y el texto entra y sale por los bordes.
+;---------------------------------------------------------------------
+arma_lienzo:
+            ld      hl,BUF_LIENZO
+            ld      de,BUF_LIENZO+1
+            ld      bc,CRE_TOTAL*CRE_ANCHO-1
+            ld      (hl),0
+            ldir
+            ld      ix,cre_tabla
+            ld      b,CRE_LINEAS
+            ld      c,CRE_ALTO              ; fila del lienzo de la primera
+al_linea:
+            push    bc
+            ld      l,(ix+0)
+            ld      h,(ix+1)
+            ld      a,h
+            or      l
+            jr      z,al_salta              ; puntero a 0: renglon en blanco
+            ld      b,c                     ; fila
+            ld      c,(ix+2)                ; columna
+            call    lienzo_str
+al_salta:
+            ld      de,3
+            add     ix,de
+            pop     bc
+            ld      a,c
+            add     a,16                    ; un renglon cada 16 filas
+            ld      c,a
+            djnz    al_linea
+            ret
+
+;---------------------------------------------------------------------
+; lienzo_str - escribe una cadena en el lienzo
+;   entrada: HL = cadena, B = fila del lienzo, C = columna (0-23)
+;---------------------------------------------------------------------
+lienzo_str:
+            ld      a,(hl)
+            or      a
+            ret     z
+            push    hl
+            push    bc
+            call    lienzo_char
+            pop     bc
+            pop     hl
+            inc     hl
+            inc     c
+            jr      lienzo_str
+
+;---------------------------------------------------------------------
+; lienzo_char - un caracter del juego de la ROM en el lienzo
+;   entrada: A = codigo, B = fila, C = columna
+;---------------------------------------------------------------------
+lienzo_char:
+            ld      l,a
+            ld      h,0
+            add     hl,hl
+            add     hl,hl
+            add     hl,hl
+            ld      de,FONT
+            add     hl,de
+            push    hl                      ; origen en la fuente
+            ld      h,0
+            ld      l,b
+            add     hl,hl
+            add     hl,hl
+            add     hl,hl                   ; fila * 8
+            ld      d,h
+            ld      e,l
+            add     hl,de
+            add     hl,de                   ; fila * 24
+            ld      de,BUF_LIENZO
+            add     hl,de
+            ld      d,0
+            ld      e,c
+            add     hl,de                   ; + columna
+            ex      de,hl                   ; DE = destino
+            pop     hl                      ; HL = fuente
+            ld      b,8
+lch_fila:
+            ld      a,(hl)
+            ld      c,a
+            srl     c
+            or      c                       ; negrita: se lee mejor sobre la foto
+            ld      (de),a
+            inc     hl
+            push    hl
+            ld      hl,CRE_ANCHO
+            add     hl,de
+            ex      de,hl
+            pop     hl
+            djnz    lch_fila
+            ret
+
+;---------------------------------------------------------------------
+; arma_ventana - copia la franja de foto que tapa el texto y la
+;   oscurece con una trama del 75%, para que las letras en blanco se
+;   lean encima sin perder del todo la imagen
+;---------------------------------------------------------------------
+arma_ventana:
+            ld      de,BUF_VENTANA
+            ld      a,CRE_Y
+            ld      b,CRE_ALTO
+av_fila:
+            push    bc
+            push    af
+            ld      c,CRE_COL
+            call    scr_addr                ; HL = pantalla(y, columna)
+            ld      bc,foto-SCREEN
+            add     hl,bc                   ; y por tanto HL = foto
+            pop     af
+            push    af
+            and     1
+            ld      c,%11111110
+            jr      z,av_par
+            ld      c,%01111111
+av_par:
+            ld      b,CRE_ANCHO
+av_byte:
+            ld      a,(hl)
+            or      c
+            ld      (de),a
+            inc     hl
+            inc     e                       ; la ventana va de 32 en 32
+            djnz    av_byte
+            ld      hl,32-CRE_ANCHO
+            add     hl,de
+            ex      de,hl
+            pop     af
+            inc     a
+            pop     bc
+            djnz    av_fila
+            ret
+
+;---------------------------------------------------------------------
+; cre_pinta - recompone la ventana entera: ventana AND NO texto
+;   El lienzo se lee con SP, asi que hay que quitar las interrupciones
+;   mientras dura (una RST 38 escribiria en medio del lienzo).
+;---------------------------------------------------------------------
+cre_pinta:
+            di
+            ld      hl,BUF_VENTANA
+            ld      (cre_ven),hl
+            ld      hl,(cre_ptr)
+            ld      (cre_lie),hl
+            ld      a,CRE_Y
+            ld      b,CRE_ALTO
+cp_fila:
+            push    bc
+            push    af
+            ld      c,CRE_COL
+            call    scr_addr
+            ex      de,hl                   ; DE = pantalla
+            ld      hl,(cre_ven)            ; HL = ventana
+            ld      (cre_sp),sp             ; el SP de verdad, con lo apilado
+            ld      sp,(cre_lie)            ; SP = lienzo
+            REPT    CRE_ANCHO/2
+            pop     bc
+            ld      a,c
+            cpl
+            and     (hl)
+            ld      (de),a
+            inc     l
+            inc     e
+            ld      a,b
+            cpl
+            and     (hl)
+            ld      (de),a
+            inc     l
+            inc     e
+            ENDM
+            ld      (cre_lie),sp            ; ya apunta a la fila siguiente
+            ld      sp,(cre_sp)
+            ld      bc,32-CRE_ANCHO
+            add     hl,bc
+            ld      (cre_ven),hl
+            pop     af
+            inc     a
+            pop     bc
+            dec     b                       ; el bucle no cabe en un DJNZ
+            jp      nz,cp_fila
+            ei
+            ret
+
+;---------------------------------------------------------------------
+; cre_avanza - sube el texto un pixel, dando la vuelta al final
+;---------------------------------------------------------------------
+cre_avanza:
+            ld      hl,(cre_ptr)
+            ld      de,CRE_ANCHO
+            add     hl,de
+            ld      de,BUF_LIENZO+CRE_LARGO*CRE_ANCHO
+            or      a
+            sbc     hl,de
+            jr      nc,ca_vuelve
+            add     hl,de
+            ld      (cre_ptr),hl
+            ret
+ca_vuelve:
+            ld      de,BUF_LIENZO
+            add     hl,de
+            ld      (cre_ptr),hl
+            ret
+
+cre_tabla:                                  ; puntero, columna (0-23)
+            DEFW    txt_cre_juego
+            DEFB    9
+            DEFW    0
+            DEFB    0
+            DEFW    txt_cre_codigo
+            DEFB    4
+            DEFW    txt_cre_autor
+            DEFB    3
+            DEFW    0
+            DEFB    0
+            DEFW    txt_cre_musica
+            DEFB    9
+            DEFW    txt_cre_autor
+            DEFB    3
+            DEFW    0
+            DEFB    0
+            DEFW    txt_cre_tecla
+            DEFB    4
+
+cre_ptr:         DEFW 0                     ; fila del lienzo por la que va
+cre_lie:         DEFW 0
+cre_ven:         DEFW 0
+cre_sp:          DEFW 0
 
 ;---------------------------------------------------------------------
 ; dibuja_marco - recuadro de 2 pixeles alrededor de la pantalla
@@ -2750,7 +3051,8 @@ txt_juego:       DEFB "BALAVA",0
 txt_op1:         DEFB "1  UN JUGADOR",0
 txt_op2:         DEFB "2  DOS JUGADORES",0
 txt_op3:         DEFB "3  CONTROLES",0
-txt_pulsa:       DEFB "PULSA 1, 2 O 3",0
+txt_op4:         DEFB "4  CREDITOS",0
+txt_pulsa:       DEFB "PULSA 1, 2, 3 O 4",0
 txt_autor:       DEFB "(C) 2026 ALEJANDRO MARTINEZ",0
 txt_controles:   DEFB "CONTROLES",0
 txt_j1:          DEFB "JUGADOR 1 - SHERIFF",0
@@ -2766,6 +3068,11 @@ txt_gana_poli:   DEFB "GANA EL SHERIFF",0
 txt_gana_ladron: DEFB "GANA EL BANDIDO",0
 txt_final:       DEFB "RESULTADO",0
 txt_empate:      DEFB "SIN BALAS: EMPATE",0
+txt_cre_juego:   DEFB "BALAVA",0
+txt_cre_codigo:  DEFB "DESARROLLADO POR",0
+txt_cre_musica:  DEFB "MUSICA",0
+txt_cre_autor:   DEFB "ALEJANDRO MARTINEZ",0
+txt_cre_tecla:   DEFB "PULSA UNA TECLA",0
 
 spr_caracol_d:           ; caracol a la derecha, 48x26 (margen a los cuatro lados)
             DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ................................................
@@ -2940,6 +3247,8 @@ cancion_menu:
             DEFW    menu_a, menu_b, menu_c
 cancion_funeral:
             DEFW    fune_a, fune_b, fune_c
+cancion_creditos:
+            DEFW    cre_a, cre_b, cre_c
 
 menu_a:              ; Oh! Susanna: la melodia
             DEFW      212
@@ -3368,6 +3677,296 @@ b2_y:            DEFB 0
 b2_act:          DEFB 0
 puntos1:         DEFB 0
 puntos2:         DEFB 0
+
+cre_a:               ; creditos: la melodia
+            DEFW      377
+            DEFB    37                  ; D4
+            DEFW      336
+            DEFB    13                  ; E4
+            DEFW      317
+            DEFB    50                  ; F4
+            DEFW      252
+            DEFB    50                  ; A4
+            DEFW      283
+            DEFB    25                  ; G4
+            DEFW      317
+            DEFB    25                  ; F4
+            DEFW      336
+            DEFB    50                  ; E4
+            DEFW      377
+            DEFB    25                  ; D4
+            DEFW      336
+            DEFB    50                  ; E4
+            DEFW        0
+            DEFB    25                  ; -
+            DEFW      317
+            DEFB    37                  ; F4
+            DEFW      283
+            DEFB    13                  ; G4
+            DEFW      252
+            DEFB    50                  ; A4
+            DEFW      212
+            DEFB    50                  ; C5
+            DEFW      238
+            DEFB    25                  ; A#4
+            DEFW      252
+            DEFB    25                  ; A4
+            DEFW      283
+            DEFB    50                  ; G4
+            DEFW      317
+            DEFB    25                  ; F4
+            DEFW      336
+            DEFB    50                  ; E4
+            DEFW        0
+            DEFB    25                  ; -
+            DEFW      189
+            DEFB    50                  ; D5
+            DEFW      212
+            DEFB    25                  ; C5
+            DEFW      238
+            DEFB    25                  ; A#4
+            DEFW      252
+            DEFB    50                  ; A4
+            DEFW      283
+            DEFB    50                  ; G4
+            DEFW      252
+            DEFB    50                  ; A4
+            DEFW      317
+            DEFB    25                  ; F4
+            DEFW      336
+            DEFB    25                  ; E4
+            DEFW      377
+            DEFB    75                  ; D4
+            DEFW        0
+            DEFB    25                  ; -
+            DEFW    0xFFFF
+
+cre_b:               ; el bajo
+            DEFW     1510
+            DEFB    50                  ; D2
+            DEFW     1008
+            DEFB    50                  ; A2
+            DEFW     1510
+            DEFB    50                  ; D2
+            DEFW     1270
+            DEFB    50                  ; F2
+            DEFW      951
+            DEFB    75                  ; A#2
+            DEFW     1008
+            DEFB    75                  ; A2
+            DEFW     1270
+            DEFB    50                  ; F2
+            DEFW      847
+            DEFB    50                  ; C3
+            DEFW     1270
+            DEFB    50                  ; F2
+            DEFW     1008
+            DEFB    50                  ; A2
+            DEFW      951
+            DEFB    75                  ; A#2
+            DEFW     1008
+            DEFB    75                  ; A2
+            DEFW     1510
+            DEFB    50                  ; D2
+            DEFW     1008
+            DEFB    50                  ; A2
+            DEFW     1131
+            DEFB    50                  ; G2
+            DEFW      755
+            DEFB    50                  ; D3
+            DEFW     1008
+            DEFB    50                  ; A2
+            DEFW      673
+            DEFB    50                  ; E3
+            DEFW     1510
+            DEFB    100                  ; D2
+            DEFW    0xFFFF
+
+cre_c:               ; el arpegio
+            DEFW      755
+            DEFB    12                  ; D3
+            DEFW      635
+            DEFB    13                  ; F3
+            DEFW      504
+            DEFB    12                  ; A3
+            DEFW      377
+            DEFB    13                  ; D4
+            DEFW      755
+            DEFB    12                  ; D3
+            DEFW      635
+            DEFB    13                  ; F3
+            DEFW      504
+            DEFB    12                  ; A3
+            DEFW      377
+            DEFB    13                  ; D4
+            DEFW      755
+            DEFB    12                  ; D3
+            DEFW      635
+            DEFB    13                  ; F3
+            DEFW      504
+            DEFB    12                  ; A3
+            DEFW      377
+            DEFB    13                  ; D4
+            DEFW      755
+            DEFB    12                  ; D3
+            DEFW      635
+            DEFB    13                  ; F3
+            DEFW      504
+            DEFB    12                  ; A3
+            DEFW      377
+            DEFB    13                  ; D4
+            DEFW      951
+            DEFB    12                  ; A#2
+            DEFW      755
+            DEFB    13                  ; D3
+            DEFW      635
+            DEFB    12                  ; F3
+            DEFW      476
+            DEFB    13                  ; A#3
+            DEFW      951
+            DEFB    12                  ; A#2
+            DEFW      755
+            DEFB    13                  ; D3
+            DEFW     1008
+            DEFB    12                  ; A2
+            DEFW      800
+            DEFB    13                  ; C#3
+            DEFW      673
+            DEFB    12                  ; E3
+            DEFW      504
+            DEFB    13                  ; A3
+            DEFW     1008
+            DEFB    12                  ; A2
+            DEFW      800
+            DEFB    13                  ; C#3
+            DEFW      635
+            DEFB    12                  ; F3
+            DEFW      504
+            DEFB    13                  ; A3
+            DEFW      424
+            DEFB    12                  ; C4
+            DEFW      317
+            DEFB    13                  ; F4
+            DEFW      635
+            DEFB    12                  ; F3
+            DEFW      504
+            DEFB    13                  ; A3
+            DEFW      424
+            DEFB    12                  ; C4
+            DEFW      317
+            DEFB    13                  ; F4
+            DEFW      847
+            DEFB    12                  ; C3
+            DEFW      673
+            DEFB    13                  ; E3
+            DEFW      566
+            DEFB    12                  ; G3
+            DEFW      424
+            DEFB    13                  ; C4
+            DEFW      847
+            DEFB    12                  ; C3
+            DEFW      673
+            DEFB    13                  ; E3
+            DEFW      566
+            DEFB    12                  ; G3
+            DEFW      424
+            DEFB    13                  ; C4
+            DEFW      951
+            DEFB    12                  ; A#2
+            DEFW      755
+            DEFB    13                  ; D3
+            DEFW      635
+            DEFB    12                  ; F3
+            DEFW      476
+            DEFB    13                  ; A#3
+            DEFW      951
+            DEFB    12                  ; A#2
+            DEFW      755
+            DEFB    13                  ; D3
+            DEFW     1008
+            DEFB    12                  ; A2
+            DEFW      800
+            DEFB    13                  ; C#3
+            DEFW      673
+            DEFB    12                  ; E3
+            DEFW      504
+            DEFB    13                  ; A3
+            DEFW     1008
+            DEFB    12                  ; A2
+            DEFW      800
+            DEFB    13                  ; C#3
+            DEFW      755
+            DEFB    12                  ; D3
+            DEFW      635
+            DEFB    13                  ; F3
+            DEFW      504
+            DEFB    12                  ; A3
+            DEFW      377
+            DEFB    13                  ; D4
+            DEFW      755
+            DEFB    12                  ; D3
+            DEFW      635
+            DEFB    13                  ; F3
+            DEFW      504
+            DEFB    12                  ; A3
+            DEFW      377
+            DEFB    13                  ; D4
+            DEFW      566
+            DEFB    12                  ; G3
+            DEFW      476
+            DEFB    13                  ; A#3
+            DEFW      377
+            DEFB    12                  ; D4
+            DEFW      283
+            DEFB    13                  ; G4
+            DEFW      566
+            DEFB    12                  ; G3
+            DEFW      476
+            DEFB    13                  ; A#3
+            DEFW      377
+            DEFB    12                  ; D4
+            DEFW      283
+            DEFB    13                  ; G4
+            DEFW     1008
+            DEFB    12                  ; A2
+            DEFW      800
+            DEFB    13                  ; C#3
+            DEFW      673
+            DEFB    12                  ; E3
+            DEFW      504
+            DEFB    13                  ; A3
+            DEFW     1008
+            DEFB    12                  ; A2
+            DEFW      800
+            DEFB    13                  ; C#3
+            DEFW      673
+            DEFB    12                  ; E3
+            DEFW      504
+            DEFB    13                  ; A3
+            DEFW      755
+            DEFB    12                  ; D3
+            DEFW      635
+            DEFB    13                  ; F3
+            DEFW      504
+            DEFB    12                  ; A3
+            DEFW      377
+            DEFB    13                  ; D4
+            DEFW      755
+            DEFB    12                  ; D3
+            DEFW      635
+            DEFB    13                  ; F3
+            DEFW      504
+            DEFB    12                  ; A3
+            DEFW      377
+            DEFB    13                  ; D4
+            DEFW    0xFFFF
+
+;---------------------------------------------------------------------
+; la foto del autor, tramada a un bit y ya en el orden de la memoria
+; de video: pintarla es un LDIR (la genera tools/foto.py)
+;---------------------------------------------------------------------
+foto:
+            INCBIN  "build/foto.bin"
 
 fin_codigo:
             END inicio

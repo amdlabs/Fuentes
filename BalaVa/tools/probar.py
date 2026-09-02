@@ -221,6 +221,8 @@ def main():
     BARRIL1_COL, BARRIL2_COL, BARRIL_ALTO = 5, 25, 32
     CACTUS = [(8, 100), (21, 60)]
     NUM_BALAS, MUNICION = 4, 8
+    CRE_COL, CRE_ANCHO, CRE_Y, CRE_ALTO = 4, 24, 112, 56
+    ATTR_JUEGO = 0x30
 
     def pixeles(col, y, filas, ancho):
         return sum(bin(m.memory[dir_pantalla(y + f, col + c)]).count('1')
@@ -283,9 +285,9 @@ def main():
         glifo = m.peek(sim['logo_letras'] + i * 2) | (m.peek(sim['logo_letras'] + i * 2 + 1) << 8)
         esperados += sum(bin(m.peek(glifo + n)).count('1') for n in range(28))
     P.check(huecos == esperados, 'el logotipo BALAVA, en hueco', f'{huecos} de {esperados}')
-    filas = {y // 8 for y in range(96, 184)
+    filas = {y // 8 for y in range(88, 184)
              if any(m.memory[dir_pantalla(y, c)] for c in range(4, 28))}
-    P.check(filas == {12, 14, 16, 19, 21}, 'las tres opciones y los dos rotulos',
+    P.check(filas == {11, 13, 15, 17, 19, 21}, 'las cuatro opciones y los dos rotulos',
             str(sorted(filas)))
 
     # ---------------------------------------------------------------
@@ -330,7 +332,50 @@ def main():
     m.frames(5)
 
     # ---------------------------------------------------------------
-    print('\n5. Opcion 2: partida a dos')
+    print('\n5. Opcion 4: los creditos')
+    m.frames(10, ['4'])
+    m.frames(30)
+    captura(m, '2b-creditos.png')
+    foto = open(os.path.join(RAIZ, 'build', 'foto.bin'), 'rb').read()
+    arriba = all(m.memory[dir_pantalla(y, c)] == foto[dir_pantalla(y, c) - 0x4000]
+                 for y in range(CRE_Y) for c in range(32))
+    P.check(arriba, 'la foto del autor, tramada a un bit')
+    P.check(all(m.memory[0x5800 + i] == 0x38 for i in range(768)),
+            'en blanco y negro, sin colour clash posible')
+    ventana = lambda: bytes(m.memory[dir_pantalla(y, c)]
+                            for y in range(CRE_Y, CRE_Y + CRE_ALTO)
+                            for c in range(CRE_COL, CRE_COL + CRE_ANCHO))
+    v0 = ventana()
+    sin_tramar = bytes(foto[dir_pantalla(y, c) - 0x4000]
+                       for y in range(CRE_Y, CRE_Y + CRE_ALTO)
+                       for c in range(CRE_COL, CRE_COL + CRE_ANCHO))
+    P.check(v0 != sin_tramar, 'con la franja del texto oscurecida sobre la foto')
+    m.frames(25)
+    v1 = ventana()
+    distintos = sum(a != b for a, b in zip(v0, v1))
+    P.check(distintos > 100, 'y el texto subiendo',          # el fondo no se mueve:
+            f'{distintos} bytes de {len(v0)} cambian en medio segundo')  # solo las letras
+    letras = sum(bin(a & ~b & 0xFF).count('1') for a, b in zip(sin_tramar, v1))
+    P.check(letras > 200, 'con letras en blanco recortadas encima',
+            f'{letras} pixeles en hueco')
+    periodos = [set(), set(), set()]
+    for _ in range(400):
+        m.frames(1)
+        for c in range(3):
+            if m.periodo_canal(c):
+                periodos[c].add(m.periodo_canal(c))
+    P.check(m.ay[7] & 0b111000 == 0b111000 and not m.ay[7] & 7,
+            'tono en los tres canales', bin(m.ay[7]))
+    P.check(all(len(p) >= 3 for p in periodos), 'melodia, bajo y arpegio',
+            str([len(p) for p in periodos]))
+    P.check(min(min(p) for p in periodos[1:2]) > 800,
+            'con el bajo donde le toca', f'{sorted(periodos[1])[:3]}')
+    m.frames(10, ['SPACE'])
+    m.frames(20)
+    P.check(m.peek(0x5800) == ATTR_JUEGO, 'y una tecla devuelve al menu')
+
+    # ---------------------------------------------------------------
+    print('\n6. Opcion 2: partida a dos')
     m.frames(10, ['2'])
     m.frames(10)
     captura(m, '3-partida.png')
@@ -350,7 +395,7 @@ def main():
             'barril del bandido dibujado')
 
     # ---------------------------------------------------------------
-    print('\n6. La carreta sube por el centro')
+    print('\n7. La carreta sube por el centro')
     y0 = val('carreta_y')
     m.frames(40)
     P.check(val('carreta_y') == y0 - 10, 'un pixel cada cuatro fotogramas',
@@ -359,7 +404,7 @@ def main():
             'y no deja rastro por debajo')
 
     # ---------------------------------------------------------------
-    print('\n7. Varias balas en el aire')
+    print('\n8. Varias balas en el aire')
     calle = calle_libre()
     P.check(calle is not None, 'hay alguna calle despejada', str(calle))
     while val('p1_y') > calle:
@@ -380,7 +425,7 @@ def main():
     captura(m, '4-balas.png')
 
     # ---------------------------------------------------------------
-    print('\n8. Municion: se acaba')
+    print('\n9. Municion: se acaba')
     for _ in range(12):
         m.frames(2, ['Z'])
         m.frames(6)
@@ -393,7 +438,7 @@ def main():
             'sin balas no sale ningun tiro')
 
     # ---------------------------------------------------------------
-    print('\n9. Los barriles y los cactus se van picando')
+    print('\n10. Los barriles y los cactus se van picando')
     while val('carreta_y') > 40 and val('carreta_y') != 0:
         m.frames(1)                              # que la carreta no estorbe
     antes_barril = pixeles(BARRIL2_COL, val('barril2_y'), 32, 2)
@@ -410,7 +455,7 @@ def main():
     captura(m, '5-barril.png')
 
     # ---------------------------------------------------------------
-    print('\n10. Muerte, cine y funeral')
+    print('\n11. Muerte, cine y funeral')
     m.frames(10, ['1'])                          # en partida, la tecla no hace nada
     m.frames(30)
     P.check(val('modo_ia') == 0, 'seguimos en la partida en curso')
@@ -457,7 +502,7 @@ def main():
     captura(m, '9-vuelta.png')
 
     # ---------------------------------------------------------------
-    print('\n11. La maquina juega sola')
+    print('\n12. La maquina juega sola')
     m = Spectrum(args.bin, args.scr)             # maquina nueva, para volver al menu
     m.frames(60)
     m.frames(10, ['SPACE'])

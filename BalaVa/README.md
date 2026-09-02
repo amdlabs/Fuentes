@@ -47,10 +47,10 @@ basta con un manejador minimo de la interrupcion en `0x0038` y un juego de
 caracteres 8x8 en `0x3D00`; no hace falta ninguna imagen de ROM con derechos.
 
 Que el emulador de JavaScript se porta igual que el de referencia no es una
-suposicion: `tools/estado.py` guarda el guion de teclas y, en nueve puntos, la
+suposicion: `tools/estado.py` guarda el guion de teclas y, en once puntos, la
 firma SHA-1 de la pantalla y las variables del juego que deja el emulador de
 referencia; `node tools/probar_web.js build/guion.json` repite el mismo guion
-con el nucleo de JavaScript y compara. Ahora mismo: **496 fotogramas sin una
+con el nucleo de JavaScript y compara. Ahora mismo: **642 fotogramas sin una
 sola diferencia**.
 
 ## Grabar una partida
@@ -89,11 +89,42 @@ tres opciones.
     1  UN JUGADOR
     2  DOS JUGADORES
     3  CONTROLES
+    4  CREDITOS
 
-El aviso `PULSA 1, 2 O 3` parpadea usando el bit FLASH de los atributos, que lo
-hace la propia ULA sin gastar un solo ciclo de CPU. De fondo suena **Oh! Susanna**
-(Stephen Foster, 1848, de dominio público) por el AY, a tres voces. Al terminar
-una partida, cualquier tecla devuelve al menú.
+El aviso `PULSA 1, 2, 3 O 4` parpadea usando el bit FLASH de los atributos, que
+lo hace la propia ULA sin gastar un solo ciclo de CPU. De fondo suena **Oh!
+Susanna** (Stephen Foster, 1848, de dominio público) por el AY, a tres voces. Al
+terminar una partida, cualquier tecla devuelve al menú.
+
+## Créditos
+
+La opción 4 abre los créditos: la **foto del autor digitalizada a un bit**
+ocupando la pantalla entera y, por encima, los rótulos subiendo al píxel con una
+marcha en re menor sonando por el AY.
+
+La foto la prepara `tools/foto.py`: recorta a 4:3 sobre la cara, abre las sombras
+con una gamma de 0,72 —si no, los ojos se cierran en dos manchas negras—, realza
+los bordes con una máscara de enfoque y trama con el algoritmo de **Atkinson**,
+el de los digitalizadores de la época, que reparte solo seis octavos del error y
+sale más contrastado y con menos ruido que Floyd-Steinberg. Salen 6144 bytes ya
+en el orden de la memoria de vídeo, así que pintarla es un `LDIR`. Los atributos
+van todos a `PAPER 7 / INK 0`: monocromo de verdad, sin *colour clash* posible.
+
+El scroll no puede borrar y volver a pintar, porque debajo está la foto. Así que
+la ventana del texto se recompone **entera en cada fotograma** a partir de dos
+cosas preparadas de antemano: una copia de la franja de foto ya oscurecida con
+una trama del 87 % (`BUF_VENTANA`, 56x32 bytes) y un lienzo con todo el texto ya
+dibujado (`BUF_LIENZO`, 256 filas de 24 bytes). El montaje es
+`pantalla = ventana AND NO texto`, o sea letras en blanco recortadas sobre la
+foto oscurecida. El lienzo se lee con `POP`, que trae dos bytes en 10 T-estados,
+así que hay que apagar las interrupciones mientras dura: con `SP` apuntando al
+lienzo, una `RST 38` escribiría justo ahí. Son 1344 bytes por fotograma, unos
+59 000 T-estados de los 69 888 que tiene un fotograma.
+
+Las letras se guardan en negrita (`a OR (a >> 1)`) porque un trazo de un píxel
+se pierde sobre el tramado. Y el lienzo lleva 56 filas en blanco de más al final,
+copia de las 56 del principio, para que el bucle pueda leer una ventana entera
+desde cualquier fila sin salirse y el texto dé la vuelta sin costura.
 
 ## Controles
 
@@ -134,7 +165,8 @@ juego entero: pantalla de carga y el snapshot de 128K —que se relee siguiendo 
 especificación, sin dar por bueno cómo se generó, y se comprueba que los bancos
 salen donde toca y no sobra ni un byte—, menú, logotipo,
 la música del AY —leyendo los registros del chip y comparando las notas con la
-partitura—, pantalla de controles, colocación de los barriles, la carreta
+partitura—, pantalla de controles, los créditos —foto, atributos, el texto subiendo y las
+tres voces—, colocación de los barriles, la carreta
 subiendo, varias balas en el aire a la vez, el marcador de munición hasta
 agotarse, el picado de barriles y cactus, la muerte con su cinemática y su
 funeral, y la máquina jugando sola:
@@ -253,6 +285,10 @@ agujeros que ya tuvieran**.
   periodo sale de `1773400 / (16*f)` y el volumen decae en cada nota, que da el
   punteo. Los efectos —disparo, rebote, rotura, impacto— se quedan con el canal
   C: le meten ruido y un volumen que cae, y al terminar devuelven los acordes.
+  Hay tres canciones: **Oh! Susanna** en el menú, la **marcha fúnebre** de Chopin
+  en el funeral y una **marcha en re menor** escrita para los créditos, con
+  melodía, bajo andante y un arpegio en corcheas; las tres voces duran
+  exactamente 1100 fotogramas, así que el bucle cierra sin desfasarse.
 - **Ritmo**: `HALT` en el bucle principal sincroniza el juego a los 50 Hz de la
   interrupción, y los textos se imprimen con el juego de caracteres de la ROM
   (`0x3C00 + código*8`) sin depender de las rutinas de canales del BASIC.
@@ -262,7 +298,9 @@ agujeros que ya tuvieran**.
     src/balava.asm          codigo fuente Z80 (pasmo)
     web/z80.js              nucleo Z80 + ULA + AY en JavaScript
     web/balava.html         plantilla de la pagina del emulador
+    arte/autor.png          la foto del autor, para los creditos
     tools/pantalla_carga.py compone la pantalla de carga sin colour clash
+    tools/foto.py           trama la foto a un bit para la pantalla de creditos
     tools/rom.py            la ROM sintetica (interrupcion y juego de caracteres)
     tools/make_z80.py       genera el snapshot .z80 de 128K a partir del binario
     tools/web.py            arma dist/balava-web.html con todo dentro

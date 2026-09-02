@@ -6,6 +6,10 @@ mkdir -p build dist
 if [ ! -f dist/balava.scr ] || [ tools/pantalla_carga.py -nt dist/balava.scr ]; then
     python3 tools/pantalla_carga.py          # necesita Pillow
 fi
+if [ ! -f build/foto.bin ] || [ tools/foto.py -nt build/foto.bin ] \
+        || [ arte/autor.png -nt build/foto.bin ]; then
+    python3 tools/foto.py                   # la foto de los creditos
+fi
 pasmo --bin --alocal src/balava.asm build/balava.bin build/balava.sym
 python3 tools/make_z80.py build/balava.bin dist/balava.z80 --pantalla dist/balava.scr
 python3 tools/web.py                     # pagina autocontenida del emulador

@@ -34,6 +34,11 @@ GUION = [
     (30, [], 'pantalla'),
     (8, ['SPACE'], None),
     (30, [], None),
+    (8, ['4'], None),                          # creditos: la foto y el scroll
+    (40, [], 'pantalla'),
+    (60, [], 'pantalla'),                      # el texto ya subiendo
+    (8, ['SPACE'], None),
+    (30, [], None),
     (8, ['2'], None),                          # partida a dos
     (30, [], 'todo'),
     (40, ['A'], 'todo'),                       # el sheriff baja
