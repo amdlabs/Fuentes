@@ -2653,8 +2653,16 @@ ay_pon:
             inc     hl
             ld      a,b
             or      c
+            jr      z,ay_calla
+            ld      a,(ay_num)              ; la melodia por encima del
+            add     a,a                     ; acompanamiento: 15, 13 y 11
+            push    bc
+            ld      c,a
             ld      a,15
-            jr      nz,ay_vol_ini
+            sub     c
+            pop     bc
+            jr      ay_vol_ini
+ay_calla:
             xor     a                       ; silencio
 ay_vol_ini:
             ld      (hl),a
@@ -3341,39 +3349,65 @@ menu_a:              ; Oh! Susanna: la melodia
             DEFB    25                  ; -
             DEFW    0xFFFF
 
-menu_b:              ; el bajo
+menu_b:               ; el bajo
             DEFW      847
-            DEFB    25                  ; C3
-            DEFW      847
-            DEFB    25                  ; C3
-            DEFW      847
-            DEFB    25                  ; C3
-            DEFW      847
-            DEFB    25                  ; C3
+            DEFB    12                  ; C3
             DEFW     1131
-            DEFB    25                  ; G2
-            DEFW     1131
-            DEFB    25                  ; G2
+            DEFB    12                  ; G2
             DEFW      847
             DEFB    25                  ; C3
             DEFW      847
             DEFB    25                  ; C3
             DEFW      847
-            DEFB    25                  ; C3
+            DEFB    12                  ; C3
+            DEFW     1270
+            DEFB    12                  ; F2
             DEFW      847
             DEFB    25                  ; C3
-            DEFW     1131
-            DEFB    25                  ; G2
+            DEFW      847
+            DEFB    24                  ; C3
             DEFW     1131
             DEFB    25                  ; G2
             DEFW      847
             DEFB    25                  ; C3
             DEFW      847
+            DEFB    12                  ; C3
+            DEFW     1131
+            DEFB    12                  ; G2
+            DEFW      847
             DEFB    25                  ; C3
+            DEFW     1131
+            DEFB    25                  ; G2
+            DEFW     1131
+            DEFB    24                  ; G2
+            DEFW      847
+            DEFB    12                  ; C3
+            DEFW     1131
+            DEFB    12                  ; G2
             DEFW      847
             DEFB    25                  ; C3
             DEFW      847
             DEFB    25                  ; C3
+            DEFW      847
+            DEFB    12                  ; C3
+            DEFW     1270
+            DEFB    12                  ; F2
+            DEFW      847
+            DEFB    25                  ; C3
+            DEFW      847
+            DEFB    24                  ; C3
+            DEFW     1131
+            DEFB    25                  ; G2
+            DEFW      847
+            DEFB    25                  ; C3
+            DEFW     1131
+            DEFB    25                  ; G2
+            DEFW      847
+            DEFB    25                  ; C3
+            DEFW      847
+            DEFB    25                  ; C3
+            DEFW      847
+            DEFB    12                  ; C3
             DEFW     1270
             DEFB    25                  ; F2
             DEFW     1270
@@ -3382,131 +3416,177 @@ menu_b:              ; el bajo
             DEFB    25                  ; F2
             DEFW     1270
             DEFB    25                  ; F2
+            DEFW     1270
+            DEFB    12                  ; F2
             DEFW      847
             DEFB    25                  ; C3
             DEFW      847
             DEFB    25                  ; C3
+            DEFW      847
+            DEFB    12                  ; C3
+            DEFW     1131
+            DEFB    25                  ; G2
+            DEFW      847
+            DEFB    25                  ; C3
+            DEFW     1131
+            DEFB    12                  ; G2
+            DEFW      847
+            DEFB    12                  ; C3
             DEFW     1131
             DEFB    25                  ; G2
             DEFW     1131
             DEFB    25                  ; G2
-            DEFW      847
-            DEFB    25                  ; C3
-            DEFW      847
-            DEFB    25                  ; C3
-            DEFW      847
-            DEFB    50                  ; C3
+            DEFW     1131
+            DEFB    25                  ; G2
             DEFW    0xFFFF
 
-menu_c:              ; los acordes
+menu_c:               ; el arpegio
+            DEFW      424
+            DEFB    12                  ; C4
+            DEFW      377
+            DEFB    12                  ; D4
+            DEFW      424
+            DEFB    12                  ; C4
             DEFW      336
-            DEFB    12                  ; E4
+            DEFB    13                  ; E4
+            DEFW      283
+            DEFB    12                  ; G4
+            DEFW      336
+            DEFB    13                  ; E4
+            DEFW      424
+            DEFB    12                  ; C4
+            DEFW      424
+            DEFB    12                  ; C4
+            DEFW      424
+            DEFB    12                  ; C4
+            DEFW      336
+            DEFB    13                  ; E4
             DEFW      283
             DEFB    12                  ; G4
             DEFW      336
             DEFB    12                  ; E4
+            DEFW      377
+            DEFB    12                  ; D4
             DEFW      283
-            DEFB    12                  ; G4
+            DEFB    13                  ; G4
+            DEFW      424
+            DEFB    12                  ; C4
             DEFW      336
-            DEFB    12                  ; E4
-            DEFW      283
-            DEFB    12                  ; G4
-            DEFW      336
-            DEFB    12                  ; E4
+            DEFB    13                  ; E4
             DEFW      283
             DEFB    12                  ; G4
             DEFW      377
             DEFB    12                  ; D4
-            DEFW      283
-            DEFB    12                  ; G4
+            DEFW      424
+            DEFB    12                  ; C4
+            DEFW      336
+            DEFB    13                  ; E4
             DEFW      377
             DEFB    12                  ; D4
             DEFW      283
+            DEFB    13                  ; G4
+            DEFW      224
+            DEFB    12                  ; B4
+            DEFW      283
+            DEFB    12                  ; G4
+            DEFW      424
+            DEFB    12                  ; C4
+            DEFW      377
+            DEFB    12                  ; D4
+            DEFW      424
+            DEFB    12                  ; C4
+            DEFW      336
+            DEFB    13                  ; E4
+            DEFW      283
             DEFB    12                  ; G4
             DEFW      336
-            DEFB    12                  ; E4
+            DEFB    13                  ; E4
+            DEFW      424
+            DEFB    12                  ; C4
+            DEFW      424
+            DEFB    12                  ; C4
+            DEFW      424
+            DEFB    12                  ; C4
+            DEFW      336
+            DEFB    13                  ; E4
             DEFW      283
             DEFB    12                  ; G4
             DEFW      336
             DEFB    12                  ; E4
-            DEFW      283
-            DEFB    12                  ; G4
-            DEFW      336
-            DEFB    12                  ; E4
-            DEFW      283
-            DEFB    12                  ; G4
-            DEFW      336
-            DEFB    12                  ; E4
-            DEFW      283
-            DEFB    12                  ; G4
             DEFW      377
             DEFB    12                  ; D4
             DEFW      283
-            DEFB    12                  ; G4
+            DEFB    13                  ; G4
+            DEFW      424
+            DEFB    12                  ; C4
+            DEFW      336
+            DEFB    13                  ; E4
             DEFW      377
             DEFB    12                  ; D4
             DEFW      283
-            DEFB    12                  ; G4
+            DEFB    13                  ; G4
+            DEFW      424
+            DEFB    12                  ; C4
             DEFW      336
-            DEFB    12                  ; E4
+            DEFB    13                  ; E4
             DEFW      283
             DEFB    12                  ; G4
             DEFW      336
-            DEFB    12                  ; E4
-            DEFW      283
-            DEFB    12                  ; G4
-            DEFW      336
-            DEFB    12                  ; E4
-            DEFW      283
-            DEFB    12                  ; G4
-            DEFW      336
-            DEFB    12                  ; E4
-            DEFW      283
-            DEFB    12                  ; G4
+            DEFB    13                  ; E4
+            DEFW      424
+            DEFB    12                  ; C4
+            DEFW      424
+            DEFB    13                  ; C4
             DEFW      317
             DEFB    12                  ; F4
             DEFW      252
-            DEFB    12                  ; A4
+            DEFB    13                  ; A4
+            DEFW      317
+            DEFB    12                  ; F4
+            DEFW      424
+            DEFB    13                  ; C4
             DEFW      317
             DEFB    12                  ; F4
             DEFW      252
-            DEFB    12                  ; A4
+            DEFB    13                  ; A4
             DEFW      317
             DEFB    12                  ; F4
-            DEFW      252
-            DEFB    12                  ; A4
-            DEFW      317
-            DEFB    12                  ; F4
-            DEFW      252
-            DEFB    12                  ; A4
+            DEFW      424
+            DEFB    12                  ; C4
+            DEFW      424
+            DEFB    12                  ; C4
             DEFW      336
-            DEFB    12                  ; E4
+            DEFB    13                  ; E4
             DEFW      283
             DEFB    12                  ; G4
             DEFW      336
+            DEFB    13                  ; E4
+            DEFW      424
+            DEFB    12                  ; C4
+            DEFW      377
+            DEFB    13                  ; D4
+            DEFW      283
+            DEFB    12                  ; G4
+            DEFW      424
+            DEFB    13                  ; C4
+            DEFW      336
             DEFB    12                  ; E4
+            DEFW      377
+            DEFB    12                  ; D4
+            DEFW      424
+            DEFB    12                  ; C4
+            DEFW      377
+            DEFB    13                  ; D4
+            DEFW      283
+            DEFB    12                  ; G4
+            DEFW      224
+            DEFB    13                  ; B4
             DEFW      283
             DEFB    12                  ; G4
             DEFW      377
-            DEFB    12                  ; D4
-            DEFW      317
-            DEFB    12                  ; F4
-            DEFW      377
-            DEFB    12                  ; D4
-            DEFW      317
-            DEFB    12                  ; F4
-            DEFW      336
-            DEFB    12                  ; E4
+            DEFB    13                  ; D4
             DEFW      283
             DEFB    12                  ; G4
-            DEFW      336
-            DEFB    12                  ; E4
-            DEFW      283
-            DEFB    12                  ; G4
-            DEFW      336
-            DEFB    25                  ; E4
-            DEFW        0
-            DEFB    25                  ; -
             DEFW    0xFFFF
 
 fune_a:              ; marcha funebre: la melodia
@@ -3546,60 +3626,58 @@ fune_a:              ; marcha funebre: la melodia
             DEFB    25                  ; -
             DEFW    0xFFFF
 
-fune_b:              ; el bajo
+fune_b:               ; el bajo
             DEFW     1695
             DEFB    50                  ; C2
             DEFW     1695
             DEFB    50                  ; C2
-            DEFW     1068
-            DEFB    50                  ; G#2
+            DEFW     1695
+            DEFB    36                  ; C2
             DEFW     1131
-            DEFB    50                  ; G2
+            DEFB    37                  ; G2
             DEFW     1695
-            DEFB    50                  ; C2
+            DEFB    62                  ; C2
             DEFW     1425
-            DEFB    50                  ; D#2
-            DEFW     1131
-            DEFB    50                  ; G2
+            DEFB    37                  ; D#2
+            DEFW     1068
+            DEFB    62                  ; G#2
             DEFW     1695
             DEFB    50                  ; C2
-            DEFW        0
-            DEFB    25                  ; -
+            DEFW     1695
+            DEFB    62                  ; C2
             DEFW    0xFFFF
 
-fune_c:              ; los acordes
+fune_c:               ; el arpegio
+            DEFW      847
+            DEFB    25                  ; C3
             DEFW      712
-            DEFB    25                  ; D#3
-            DEFW      712
-            DEFB    25                  ; D#3
-            DEFW      712
-            DEFB    25                  ; D#3
-            DEFW      712
-            DEFB    25                  ; D#3
-            DEFW      566
-            DEFB    25                  ; G3
+            DEFB    26                  ; D#3
             DEFW      566
             DEFB    25                  ; G3
             DEFW      712
-            DEFB    25                  ; D#3
-            DEFW      712
-            DEFB    25                  ; D#3
-            DEFW      712
-            DEFB    25                  ; D#3
-            DEFW      712
-            DEFB    25                  ; D#3
+            DEFB    26                  ; D#3
+            DEFW      847
+            DEFB    34                  ; C3
+            DEFW      755
+            DEFB    37                  ; D3
             DEFW      847
             DEFB    25                  ; C3
-            DEFW      847
-            DEFB    25                  ; C3
-            DEFW      755
-            DEFB    25                  ; D3
-            DEFW      755
-            DEFB    25                  ; D3
             DEFW      712
-            DEFB    50                  ; D#3
-            DEFW        0
-            DEFB    25                  ; -
+            DEFB    37                  ; D#3
+            DEFW      712
+            DEFB    37                  ; D#3
+            DEFW      847
+            DEFB    26                  ; C3
+            DEFW      712
+            DEFB    36                  ; D#3
+            DEFW      847
+            DEFB    26                  ; C3
+            DEFW      712
+            DEFB    25                  ; D#3
+            DEFW      566
+            DEFB    26                  ; G3
+            DEFW      712
+            DEFB    35                  ; D#3
             DEFW    0xFFFF
 
 ; ---- trozos de pantalla que hay que salvar del funeral ---------------

@@ -318,6 +318,23 @@ def main():
     tocadas = {t[0] for t in periodos if t[0]}
     P.check(tocadas <= notas | {0}, 'y son las de la partitura',
             f'{len(tocadas & notas)} de {len(tocadas)}')
+    # las tres voces se reproducen por separado: si no duran lo mismo, a la
+    # segunda vuelta el bajo y el arpegio suenan contra la melodia
+    largo = 0
+    p = sim['menu_a']
+    while (m.peek(p) | (m.peek(p + 1) << 8)) != 0xFFFF:
+        largo += m.peek(p + 2)
+        p += 3
+    antes = tuple(m.ay[0:11])
+    m.frames(largo // 2)
+    P.check(tuple(m.ay[0:11]) != antes, 'la cancion va cambiando por dentro')
+    m.frames(largo - largo // 2)
+    P.check(tuple(m.ay[0:11]) == antes,
+            'y las tres vuelven a empezar a la vez, sin desfasarse',
+            f'{largo} fotogramas')
+    P.check(m.ay[8] >= m.ay[9] and m.ay[8] >= m.ay[10],
+            'con la melodia por encima del acompanamiento',
+            f'volumenes {m.ay[8]}, {m.ay[9]} y {m.ay[10]}')
 
     # ---------------------------------------------------------------
     print('\n4. Opcion 3: pantalla de controles')

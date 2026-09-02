@@ -10,6 +10,7 @@ if [ ! -f build/foto.bin ] || [ tools/foto.py -nt build/foto.bin ] \
         || [ arte/autor.png -nt build/foto.bin ]; then
     python3 tools/foto.py                   # la foto de los creditos
 fi
+python3 tools/musica.py --comprobar     # las tres voces, del mismo largo
 pasmo --bin --alocal src/balava.asm build/balava.bin build/balava.sym
 python3 tools/make_z80.py build/balava.bin dist/balava.z80 --pantalla dist/balava.scr
 python3 tools/web.py                     # pagina autocontenida del emulador

@@ -287,8 +287,17 @@ agujeros que ya tuvieran**.
   C: le meten ruido y un volumen que cae, y al terminar devuelven los acordes.
   Hay tres canciones: **Oh! Susanna** en el menú, la **marcha fúnebre** de Chopin
   en el funeral y una **marcha en re menor** escrita para los créditos, con
-  melodía, bajo andante y un arpegio en corcheas; las tres voces duran
-  exactamente 1100 fotogramas, así que el bucle cierra sin desfasarse.
+  melodía, bajo andante y un arpegio en corcheas. La melodía entra a volumen 15
+  y el acompañamiento a 13 y 11, para que no la tape.
+
+  Cada voz se reproduce por su lado y vuelve a empezar al llegar a su final, así
+  que **las tres tienen que durar exactamente lo mismo**: si no, a la segunda
+  vuelta el bajo y el arpegio suenan contra la melodía. Por eso el bajo y el
+  arpegio no se escriben a mano, los saca `tools/musica.py` de la propia melodía:
+  le asigna un acorde a cada nota, junta los que se repiten y rellena cada tramo
+  con la raíz y con las notas del acorde en rueda. `build.sh` no compila si las
+  tres voces de una canción no cuadran, y las pruebas comprueban además que al
+  cabo de una vuelta entera el AY vuelve al mismo estado.
 - **Ritmo**: `HALT` en el bucle principal sincroniza el juego a los 50 Hz de la
   interrupción, y los textos se imprimen con el juego de caracteres de la ROM
   (`0x3C00 + código*8`) sin depender de las rutinas de canales del BASIC.
@@ -301,6 +310,7 @@ agujeros que ya tuvieran**.
     arte/autor.png          la foto del autor, para los creditos
     tools/pantalla_carga.py compone la pantalla de carga sin colour clash
     tools/foto.py           trama la foto a un bit para la pantalla de creditos
+    tools/musica.py         saca el bajo y el arpegio de cada melodia
     tools/rom.py            la ROM sintetica (interrupcion y juego de caracteres)
     tools/make_z80.py       genera el snapshot .z80 de 128K a partir del binario
     tools/web.py            arma dist/balava-web.html con todo dentro
