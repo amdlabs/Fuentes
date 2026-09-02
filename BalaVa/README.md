@@ -34,7 +34,13 @@ primero que consiga 5 impactos.
 `dist/balava-web.html` es una sola pagina, sin descargas ni dependencias: lleva
 dentro un **nucleo Z80 escrito en JavaScript** (`web/z80.js`), el binario del
 juego, la pantalla de carga y el juego de caracteres, todo en base64. Se abre y
-se juega, con el sonido del AY sintetizado por la Web Audio API.
+se juega. El boton **SONIDO** enciende la sintesis del AY: se leen los registros
+del chip una vez por fotograma y se genera el bloque de 882 muestras que toca,
+tres canales de tono mas el ruido, con la Web Audio API.
+
+Como todo el guion de la pagina vive en un solo ambito, `tools/web.py` aborta la
+compilacion si dos declaraciones comparten nombre: la segunda gana en silencio y
+las dos acaban siendo la misma variable.
 
 La ROM es **sintetica**: el juego no llama a ninguna rutina del sistema, asi que
 basta con un manejador minimo de la interrupcion en `0x0038` y un juego de
@@ -112,8 +118,10 @@ Hace falta [pasmo](https://pasmo.speccy.org/) y Python 3:
 
 `build.sh` genera la pantalla de carga, ensambla `src/balava.asm` a un binario
 con ORG `0x8000` y `tools/make_z80.py` lo envuelve en un snapshot `.z80` de
-**versión 2 de 128K** (cabecera extendida de 23 bytes, modo hardware 3, con la
-ROM de 48K paginada por `0x7FFD = 0x10` y los ocho bancos de RAM sin comprimir),
+**versión 2 de 128K**: palabra de longitud en los offsets 30-31 y detrás los 23
+bytes de cabecera ampliada (offsets 32 a 54, con el modo hardware 3, la ROM de
+48K paginada por `0x7FFD = 0x10` y la marca de sonido por el AY), así que el
+primer banco arranca en el offset 55; los ocho van sin comprimir. Va
 con `PC=0x8000`, `SP=0xFF00`, `IM 1` e interrupciones activas. La pantalla de
 carga va precargada en la memoria de vídeo del propio snapshot (`--pantalla`),
 así que no ocupa ni un byte de código ni hace falta descomprimir nada al
@@ -122,7 +130,9 @@ arrancar.
 ## Pruebas
 
 `tools/probar.py` ejecuta el snapshot en un Z80 emulado de verdad y comprueba el
-juego entero: pantalla de carga y cabecera del snapshot de 128K, menú, logotipo,
+juego entero: pantalla de carga y el snapshot de 128K —que se relee siguiendo la
+especificación, sin dar por bueno cómo se generó, y se comprueba que los bancos
+salen donde toca y no sobra ni un byte—, menú, logotipo,
 la música del AY —leyendo los registros del chip y comparando las notas con la
 partitura—, pantalla de controles, colocación de los barriles, la carreta
 subiendo, varias balas en el aire a la vez, el marcador de munición hasta

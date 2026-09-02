@@ -50,13 +50,17 @@ def construir(binario, org, pc, sp, borde, iy, pantalla=None):
     cab[28] = 0x01                     # IFF2
     cab[29] = 0x01                     # bits 0-1: modo de interrupcion = IM 1
 
-    ext = bytearray(23)
+    # La cabecera ampliada son 23 bytes (offsets 32..54 del fichero) y van
+    # DETRAS de la palabra de longitud de los offsets 30-31, que no cuenta:
+    # el bloque entero mide 2 + 23 = 25 bytes y el primer banco arranca en
+    # el offset 55.
+    ext = bytearray(2 + 23)
     ext[0], ext[1] = 23, 0             # longitud de la cabecera ampliada
     ext[2], ext[3] = pc & 0xFF, pc >> 8
     ext[4] = 3                         # modo de maquina: 128K
     ext[5] = 0x10                      # ultimo OUT a 0x7FFD: ROM 48K, banco 0
     ext[6] = 0                         # sin Interface I
-    ext[7] = 0
+    ext[7] = 0x04                      # bit 2: hay sonido por el AY
     ext[8] = 0                         # ultimo OUT a 0xFFFD
     # ext[9..24]: los 16 registros del AY, a cero
 

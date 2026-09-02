@@ -832,10 +832,10 @@
     return 0xff000000 | ((rgb & 0xff) << 16) | (rgb & 0xff00) | ((rgb >> 16) & 0xff);
   }
   var PAL = [APAGADO.map(abgr), BRILLO.map(abgr)];
-  var cuenta = 0, bordeActual = -1;
+  var fotograma = 0, bordeActual = -1;
 
   function pintar() {
-    var mem = maquina.mem, destello = (cuenta >> 4) & 1;
+    var mem = maquina.mem, destello = (fotograma >> 4) & 1;
     for (var y = 0; y < 192; y++) {
       var base = 0x4000 | ((y & 0xc0) << 5) | ((y & 7) << 8) | ((y & 0x38) << 2);
       var attrBase = 0x5800 + (y >> 3) * 32, fila = y * 256;
@@ -859,7 +859,7 @@
   var audio = null, ganancia = null, siguiente = 0, sonando = false;
   var MUESTRAS = 882;                        // 44100 / 50
   var PASO_AY = (1773400 / 16) / 44100;      // ticks del contador por muestra
-  var cuenta = [0, 0, 0], nivel = [1, 1, 1];
+  var cuentaTono = [0, 0, 0], nivelTono = [1, 1, 1];
   var cuentaRuido = 0, lfsr = 1, nivelRuido = 1;
   var ultimaEntrada = 0, ultimaSalida = 0;   // para quitar la componente continua
   var VOLUMEN = [0, 0.006, 0.008, 0.011, 0.016, 0.022, 0.032, 0.045,
@@ -884,13 +884,14 @@
       var v = 0;
       for (var c = 0; c < 3; c++) {
         var p = per[c] || 1;
-        cuenta[c] -= PASO_AY;
-        while (cuenta[c] <= 0) { cuenta[c] += p; nivel[c] ^= 1; }
+        cuentaTono[c] -= PASO_AY;
+        while (cuentaTono[c] <= 0) { cuentaTono[c] += p; nivelTono[c] ^= 1; }
         var conTono = !((mezcla >> c) & 1);
         var conRuido = !((mezcla >> (c + 3)) & 1);
-        var salida = (conTono ? nivel[c] : 1) & (conRuido ? nivelRuido : 1);
+        var salida = (conTono ? nivelTono[c] : 1) & (conRuido ? nivelRuido : 1);
         if (salida) v += VOLUMEN[vol[c]];
       }
+      v /= 3;                                  // los tres canales, sin saturar
       ultimaSalida = v - ultimaEntrada + 0.995 * ultimaSalida;   // filtro de continua
       ultimaEntrada = v;
       datos[i] = ultimaSalida;
@@ -968,7 +969,7 @@
     reloj += pendientes * 20;
     for (var i = 0; i < pendientes; i++) {
       maquina.frame();
-      cuenta++;
+      fotograma++;
       tono();
     }
     pintar();

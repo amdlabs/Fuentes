@@ -169,6 +169,33 @@ class Pruebas:
         print(f'  [{marca}] {texto}{(" -> " + detalle) if detalle else ""}')
 
 
+def lee_z80(ruta):
+    """Lee un .z80 como manda la especificacion, sin dar por bueno como se hizo.
+
+    Cabecera de 30 bytes; si el PC de la v1 es 0 hay cabecera ampliada, cuya
+    longitud viene en la palabra de los offsets 30-31 y que ocupa a partir del
+    32.  Detras van los bancos, cada uno precedido de su longitud (0xFFFF si
+    va sin comprimir) y su numero de pagina.
+    """
+    d = open(ruta, 'rb').read()
+    if d[6] or d[7]:
+        return {'amp': 0, 'modo': -1, 'pc': d[6] | (d[7] << 8), 'puerto': -1,
+                'ay': False, 'paginas': {}, 'sobran': len(d)}
+    largo = d[30] | (d[31] << 8)
+    amp = d[32:32 + largo]
+    p, paginas = 32 + largo, {}
+    while p + 3 <= len(d):
+        ln, pag = d[p] | (d[p + 1] << 8), d[p + 2]
+        p += 3
+        if ln != 0xFFFF:                    # comprimido: aqui no se usa
+            break
+        paginas[pag] = d[p:p + 16384]
+        p += 16384
+    return {'amp': largo, 'pc': amp[0] | (amp[1] << 8), 'modo': amp[2],
+            'puerto': amp[3], 'ay': bool(amp[5] & 4), 'paginas': paginas,
+            'sobran': len(d) - p}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--png', help='directorio donde guardar capturas')
@@ -228,12 +255,19 @@ def main():
                   if scr[6144 + f * 32 + c] & 7 == (scr[6144 + f * 32 + c] >> 3) & 7
                   and any(scr[dir_pantalla(f * 8 + k, c) - 0x4000] for k in range(8))]
     P.check(not invisibles, 'sin celdas invisibles', str(invisibles[:4]))
-    z80 = open(os.path.join(RAIZ, 'dist', 'balava.z80'), 'rb').read()
-    P.check(z80[6] == 0 and z80[7] == 0 and z80[30] == 23 and z80[34] == 3,
+    snap = lee_z80(os.path.join(RAIZ, 'dist', 'balava.z80'))
+    P.check(snap['amp'] == 23 and snap['modo'] == 3,
             'el snapshot es de 128K (cabecera de version 2, modo 3)')
-    P.check(z80[35] == 0x10, 'con la ROM de 48K paginada (0x7FFD = 0x10)')
-    paginas = sorted(z80[30 + 23 + i * (3 + 16384) + 2] for i in range(8))
-    P.check(paginas == list(range(3, 11)), 'y los ocho bancos de RAM', str(paginas))
+    P.check(snap['pc'] == 0x8000 and snap['puerto'] == 0x10,
+            'arranca en 0x8000 con la ROM de 48K paginada (0x7FFD = 0x10)')
+    P.check(snap['ay'] and snap['sobran'] == 0,
+            'con la marca de sonido por el AY y sin bytes de sobra',
+            f'sobran {snap["sobran"]}')
+    P.check(sorted(snap['paginas']) == list(range(3, 11)), 'y los ocho bancos de RAM',
+            str(sorted(snap['paginas'])))
+    P.check(snap['paginas'][8][:6912] == scr, 'la pantalla de carga, en el banco 5')
+    binario = open(args.bin, 'rb').read()
+    P.check(snap['paginas'][5][:len(binario)] == binario, 'y el codigo, en el banco 2')
     m.frames(10, ['SPACE'])
 
     # ---------------------------------------------------------------
