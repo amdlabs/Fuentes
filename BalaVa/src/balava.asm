@@ -4,7 +4,7 @@
 ;  Duelo en el oeste: el sheriff (izquierda) y el bandido (derecha) se
 ;  disparan de lado a lado.  Solo pueden moverse arriba y abajo para
 ;  esquivar las balas, y la carreta, los cactus, los barriles de whisky
-;  y el caracol paran los disparos, asi que hay que buscar el hueco.
+;  y el caballo suelto paran los disparos: hay que buscar el hueco.
 ;  Ocho balas cada uno, hasta cuatro en el aire a la vez; cuando los dos
 ;  se quedan secos se acaba la partida.  A un jugador, el bandido lo
 ;  lleva la maquina.  La musica va por el AY, a tres voces.
@@ -62,14 +62,22 @@ CAJA1_COL   EQU 5                   ; x =  40 ..  55
 CAJA2_COL   EQU 25                  ; x = 200 .. 215
 CAJA_ALTO   EQU 32                  ; su altura sale a suertes cada partida
 
-; --- el caracol gigante que cruza el campo ----------------------------
-CARACOL_ALTO EQU 26                 ; 24 de bicho y una fila en blanco arriba
-CARACOL_ANCHO EQU 6                 ; 48 pixeles: 32 de bicho y un byte
-CARACOL_BYTES EQU CARACOL_ANCHO*CARACOL_ALTO      ; en blanco a cada lado
-CARACOL_MIN EQU 32                  ; por donde puede pasear
-CARACOL_MAX EQU 176
-CARACOL_MIN_Y EQU 132
-CARACOL_MAX_Y EQU 164
+; --- el caballo suelto ----------------------------------------------
+CAB_ANCHO   EQU 7                   ; 56 pixeles: 40 de caballo y un byte
+CAB_ALTO    EQU 32                  ; en blanco a cada lado
+CAB_BYTES   EQU CAB_ANCHO*CAB_ALTO
+CAB_PASOS   EQU 3                   ; posturas del paso
+CAB_RITMO   EQU 6                   ; fotogramas por pisada
+CAB_Y       EQU 158                 ; pisando el suelo
+CAB_MAX     EQU 200                 ; 256 - 56
+CAB_CUERPO  EQU 40                  ; lo que ocupa de verdad
+CAB_MORRO   EQU 48
+CAB_PASEA   EQU 0                   ; sus estados
+CAB_EMBISTE EQU 1
+CAB_HUYE    EQU 2
+CAB_PASTA   EQU 3
+CAB_ALZA    EQU 4
+CAB_IDO     EQU 5
 
 ; --- la escena del funeral -------------------------------------------
 CARRETA_ANCHO EQU 5                 ; la carreta con margenes, 40 pixeles
@@ -86,20 +94,16 @@ ESC_PARADA  EQU 104                 ; donde recoge el ataud
 ESC_FIN     EQU 216                 ; y por donde se va
 
 ; --- la pantalla de creditos -----------------------------------------
-CRE_COL     EQU 4                   ; ventana del scroll: x = 32 .. 223
-CRE_ANCHO   EQU 24
-CRE_Y       EQU 112                 ; sobre la chaqueta de la foto
-CRE_ALTO    EQU 56
-CRE_LINEAS  EQU 9                   ; renglones, uno cada 16 filas
-CRE_LARGO   EQU CRE_ALTO+CRE_LINEAS*16        ; el bucle del scroll
-CRE_TOTAL   EQU CRE_LARGO+CRE_ALTO            ; y la cola en blanco
+MQ_Y        EQU 168                 ; la marquesina, al pie de la foto
+MQ_ALTO     EQU 16                  ; dos filas: el juego de caracteres, doble
 
 ; --- memoria de trabajo (fuera del binario) --------------------------
-BUF_LIENZO  EQU 0xC000              ; texto de los creditos, 256 x 24
-BUF_VENTANA EQU 0xD800              ; la franja de foto que tapa, 56 x 32
-BUF_CARACOL_D EQU 0xE000            ; 8 copias desplazadas de cada cosa
-BUF_CARACOL_I EQU BUF_CARACOL_D+CARACOL_BYTES*8
-BUF_CARRETA EQU BUF_CARACOL_I+CARACOL_BYTES*8
+BUF_TEXTO   EQU 0xC000              ; la marquesina, 16 filas de 32 bytes
+BUF_VENTANA EQU 0xC200              ; y la franja de foto de debajo, otro tanto
+BUF_CABALLO EQU 0xC000              ; el caballo: tres posturas del paso, cada
+BUF_QUIETO  EQU BUF_CABALLO+CAB_BYTES*8*CAB_PASOS   ; una en ocho desplazamientos
+BUF_ESPEJO  EQU BUF_QUIETO+CAB_BYTES                ; (se rehacen en cada partida,
+BUF_CARRETA EQU 0xE000              ; asi comparten sitio con los creditos)
 BUF_ATAUD   EQU BUF_CARRETA+CARRETA_BYTES*8
 BALAZO_ANCHO EQU 5                  ; la bala en primer plano, con margenes
 BALAZO_ALTO EQU 8
@@ -120,16 +124,6 @@ inicio:
             ld      sp,0xFF00
             ld      iy,0x5C3A               ; la RST 38 de la ROM usa IY
             call    init_sysvars
-            ld      a,CARACOL_ANCHO         ; copias desplazadas de todo lo
-            ld      (gen_ancho),a           ; que se mueve al pixel
-            ld      a,CARACOL_ALTO
-            ld      (gen_alto),a
-            ld      hl,spr_caracol_d
-            ld      de,BUF_CARACOL_D
-            call    genera_desplazados
-            ld      hl,spr_caracol_i
-            ld      de,BUF_CARACOL_I
-            call    genera_desplazados
             ld      a,CARRETA_ANCHO
             ld      (gen_ancho),a
             ld      a,CARRETA_ALTO
@@ -191,14 +185,9 @@ partida:
             ld      (puntos2),a
             ld      (b1_act),a
             ld      (b2_act),a
-            ld      (caracol_dir),a
-            ld      (caracol_t),a
-            ld      a,CARACOL_MIN
-            ld      (caracol_x),a
-            ld      a,CARACOL_MAX_Y
-            ld      (caracol_y),a
 
-            call    coloca_barriles         ; cada partida, en otro sitio
+            call    prepara_caballo         ; cada partida, un caballo nuevo
+            call    coloca_barriles         ; y los barriles en otro sitio
             ld      a,MUNICION
             ld      (balas1),a
             ld      (balas2),a
@@ -210,7 +199,7 @@ partida:
             call    dibuja_marcador
             call    dibuja_escenario
             call    dibuja_cajas
-            call    dibuja_caracol
+            call    dibuja_caballo
             call    dibuja_carreta
             call    hud_puntos
             call    hud_municion
@@ -229,7 +218,7 @@ bucle:
             call    nz,actualiza_ia
             call    mueve_balas             ; mueven y al final se pintan
             call    pinta_balas             ; las que sigan vivas
-            call    actualiza_caracol
+            call    actualiza_caballo
             call    actualiza_carreta
 
             ld      a,(puntos1)
@@ -260,6 +249,7 @@ gana_ladron:
 fin_partida:
             push    hl
             push    bc
+            call    calla_musica            ; que no se quede el AY zumbando
             call    limpia_pantalla
             pop     bc
             pop     hl
@@ -422,6 +412,7 @@ dispara1:
             ld      hl,balas1
             dec     (hl)
             call    hud_municion
+            call    caballo_oye_tiro
             jp      sonido_tiro
 
 dispara2:
@@ -442,6 +433,7 @@ dispara2:
             ld      hl,balas2
             dec     (hl)
             call    hud_municion
+            call    caballo_oye_tiro
             jp      sonido_tiro
 
 ;---------------------------------------------------------------------
@@ -601,6 +593,12 @@ mu_sigue:
             dec     hl
             ld      a,(hl)
             call    abre_agujero            ; le arranca unos pixeles
+            ld      hl,(bal_ranura)
+            inc     hl
+            ld      b,(hl)
+            dec     hl
+            ld      a,(hl)
+            call    mira_caballo            ; ¿le ha dado al caballo?
             call    mu_apaga
             jp      sonido_rebote
 
@@ -694,6 +692,9 @@ ic_funeral:
             call    cinematica              ; la muerte, en pantalla grande
             call    funeral
             call    calla_musica            ; y se sigue jugando en silencio
+            ld      a,MUNICION              ; con el cinto lleno otra vez
+            ld      (balas1),a
+            ld      (balas2),a
             call    limpia_pantalla
             call    dibuja_marcador
             call    hud_puntos
@@ -701,7 +702,8 @@ ic_funeral:
             call    restaura_decorado
             call    dibuja_carreta
             call    coloca_jugadores
-            call    dibuja_caracol
+            call    prepara_caballo         ; y vuelve a asomar el caballo
+            call    dibuja_caballo
             ld      b,25
 ic_pausa:
             halt
@@ -951,18 +953,20 @@ cine_dos:
             halt
             call    ay_tick
             djnz    cine_dos
-            ld      a,104                   ; y la bala, entrando en el plano
+            xor     a                       ; --- la bala atraviesa la cabeza
             ld      (esc_x),a
 cine_tres:
             halt
             call    ay_tick
-            call    pinta_balazo
+            call    abre_canal              ; se lleva por delante el hueso
+            call    pinta_balazo            ; y deja el agujero de lado a lado
             ld      a,(esc_x)
-            add     a,3
+            add     a,2                     ; a camara lenta
             ld      (esc_x),a
-            cp      140
+            cp      150
             jr      c,cine_tres
             call    sonido_impacto
+            call    esquirlas               ; y el craneo suelta pedazos
             ld      b,3                     ; --- fogonazo
 cine_flash:
             push    bc
@@ -1009,6 +1013,89 @@ cine_fin:
             call    ay_tick
             djnz    cine_fin
             ret
+
+;---------------------------------------------------------------------
+; abre_canal - por donde pasa la bala no queda nada: catorce filas
+;   limpias, que es el boquete que va dejando al atravesar la cabeza
+;---------------------------------------------------------------------
+abre_canal:
+            ld      a,(esc_x)
+            rrca
+            rrca
+            rrca
+            and     %00011111
+            ld      c,a
+            ld      a,BALAZO_ANCHO
+            ld      (ancho_bloque),a
+            ld      b,14
+            ld      a,90
+            jp      borra_bloque
+
+;---------------------------------------------------------------------
+; esquirlas - por donde sale la bala, el craneo salta en pedazos: unos
+;   cuantos trozos que se van abriendo en abanico hacia delante
+;---------------------------------------------------------------------
+NUM_ESQ     EQU 6
+
+esquirlas:
+            ld      hl,esq_est              ; todos salen del mismo agujero
+            ld      b,NUM_ESQ
+esq_pon:
+            ld      (hl),140                ; x
+            inc     hl
+            ld      (hl),96                 ; y
+            inc     hl
+            djnz    esq_pon
+            ld      c,20
+esq_frame:
+            push    bc
+            call    esq_pinta
+            halt
+            call    ay_tick
+            call    esq_pinta               ; XOR: se borran solas
+            call    esq_mueve
+            pop     bc
+            dec     c
+            jr      nz,esq_frame
+            ret
+
+esq_pinta:
+            ld      hl,esq_est
+            ld      b,NUM_ESQ
+esq_una:
+            push    bc
+            push    hl
+            ld      a,(hl)
+            inc     hl
+            ld      b,(hl)
+            call    bala_xor
+            pop     hl
+            inc     hl
+            inc     hl
+            pop     bc
+            djnz    esq_una
+            ret
+
+esq_mueve:
+            ld      hl,esq_est
+            ld      de,esq_vel
+            ld      b,NUM_ESQ
+esq_paso:
+            ld      a,(de)                  ; hacia delante
+            add     a,(hl)
+            ld      (hl),a
+            inc     hl
+            inc     de
+            ld      a,(de)                  ; y abriendose, con signo
+            add     a,(hl)
+            ld      (hl),a
+            inc     hl
+            inc     de
+            djnz    esq_paso
+            ret
+
+esq_vel:         DEFB 4,-3, 5,-2, 5,0, 4,2, 3,3, 5,-1
+esq_est:         DEFS NUM_ESQ*2
 
 ;---------------------------------------------------------------------
 ; pinta_balazo - la bala en primer plano, al pixel
@@ -1156,50 +1243,82 @@ exp_bit:
 
 ;=====================================================================
 ; EL BANDIDO JUGADO POR LA MAQUINA
-;   Esquiva lo que le viene y, cuando esta despejado, se pone a la
-;   altura del sheriff y dispara con un pellizco de retardo.
+;   Cada fotograma mira las balas que vuelan hacia el y se queda con la
+;   mas adelantada de las que le vienen al cuerpo: esa es la que hay que
+;   esquivar, y se aparta por el lado que tenga mas cerca, salvo que ese
+;   lado sea el tope del campo.  Si esta despejado se pone a la altura
+;   del sheriff y dispara, pero antes comprueba que su propio barril no
+;   le tape la linea de tiro: si se la tapa, se mueve hasta rebasarlo.
 ;=====================================================================
 actualiza_ia:
-            ld      hl,b1                   ; ¿le viene alguna bala?
+            xor     a
+            ld      (ia_peor_x),a           ; de momento no le viene ninguna
+            ld      hl,b1
             ld      b,NUM_BALAS
 ia_bala:
             push    bc
             push    hl
             inc     hl
             inc     hl
-            ld      a,(hl)
+            ld      a,(hl)                  ; ¿esta viva?
             or      a
             jr      z,ia_sig
             dec     hl
-            ld      a,(hl)                  ; y de la bala
+            ld      c,(hl)                  ; C = y de la bala
+            dec     hl
+            ld      b,(hl)                  ; B = x de la bala
+            ld      a,c
             ld      hl,p2_y
             sub     (hl)
             jr      c,ia_sig                ; le pasa por encima
             cp      ALTO_SPR
             jr      nc,ia_sig               ; o por debajo
-            cp      ALTO_SPR/2
-            pop     hl
-            pop     bc
-            jr      c,ia_baja               ; le apunta arriba: agacharse
-            jr      ia_sube
+            ld      a,(ia_peor_x)           ; ¿mas cerca que la que ya tenia?
+            cp      b
+            jr      nc,ia_sig
+            ld      a,b
+            ld      (ia_peor_x),a
+            ld      a,c
+            ld      (ia_peor_y),a
 ia_sig:
             pop     hl
             ld      de,3
             add     hl,de
             pop     bc
             djnz    ia_bala
-            ld      a,(p1_y)                ; despejado: apuntar
-            ld      hl,ia_mira              ; cada tiro va a otra altura, asi
+
+            ld      a,(ia_peor_x)
+            or      a
+            jr      z,ia_apunta             ; nada que esquivar
+
+            ld      a,(ia_peor_y)           ; ¿por donde sale antes?
+            ld      hl,p2_y
+            sub     (hl)
+            cp      ALTO_SPR/2
+            jr      c,ia_baja_tope          ; le viene a la cabeza: agacharse
+            jr      ia_sube_tope            ; a los pies: levantarse
+
+ia_apunta:
+            ld      a,(p1_y)                ; despejado: a la altura del otro
+            ld      hl,ia_mira              ; cada tiro va a otro punto, asi
             add     a,(hl)                  ; acaba encontrando el hueco
             sub     BALA_DY
             ld      c,a
             ld      a,(p2_y)
             cp      c
-            jr      c,ia_sube_ap
-            jr      z,ia_tira
-            jr      ia_sube
-ia_sube_ap:
-            jr      ia_baja
+            jr      c,ia_baja
+            jr      nz,ia_sube
+            ld      a,(p2_y)                ; ya esta a tiro: ¿le tapa su
+            add     a,BALA_DY               ; propio barril?
+            ld      hl,barril2_y
+            sub     (hl)
+            jr      c,ia_tira               ; la bala sale por encima
+            cp      CAJA_ALTO
+            jr      nc,ia_tira              ; o por debajo
+            call    azar                    ; tapado: mejor probar otra altura
+            and     %00011000
+            ld      (ia_mira),a
+            ret
 ia_tira:
             ld      hl,ia_espera
             dec     (hl)
@@ -1212,6 +1331,17 @@ ia_tira:
             and     %00011000               ; 0, 8, 16 o 24
             ld      (ia_mira),a
             jp      dispara2
+
+ia_sube_tope:                               ; subir, si no esta ya arriba
+            ld      a,(p2_y)
+            cp      MIN_Y+2
+            jr      c,ia_baja
+            jr      ia_sube
+ia_baja_tope:                               ; bajar, si no esta ya abajo
+            ld      a,(p2_y)
+            cp      MAX_Y-2
+            jr      nc,ia_sube
+            jr      ia_baja
 
 ia_sube:
             ld      a,(p2_y)
@@ -1369,6 +1499,18 @@ genera_desplazados:
             xor     a
             ld      (gen_n),a
 gd_copia:
+            call    gd_una
+            ld      a,(gen_n)
+            inc     a
+            ld      (gen_n),a
+            cp      8
+            jr      c,gd_copia
+            ret
+
+;---------------------------------------------------------------------
+; gd_una - una sola copia, la del desplazamiento que haya en gen_n
+;---------------------------------------------------------------------
+gd_una:
             push    hl
             ld      a,(gen_alto)
             ld      (gen_filas),a
@@ -1410,11 +1552,6 @@ gd_junta:
             ld      (gen_filas),a
             jr      nz,gd_fila
             pop     hl                      ; otra vez al principio del sprite
-            ld      a,(gen_n)
-            inc     a
-            ld      (gen_n),a
-            cp      8
-            jr      c,gd_copia
             ret
 
 ;---------------------------------------------------------------------
@@ -1433,104 +1570,390 @@ az_guarda:
             ld      (semilla),a
             ret
 
-;---------------------------------------------------------------------
-; actualiza_caracol - pasea por la parte baja del campo: avanza,
-;   rebota en los lados y cada tantos pasos cambia de altura y de
-;   velocidad, para que no vaya siempre igual
-;---------------------------------------------------------------------
-actualiza_caracol:
-            ld      a,(caracol_t)
-            inc     a
-            ld      hl,caracol_paso
-            cp      (hl)
-            jr      nc,ac_mueve
-            ld      (caracol_t),a
+;=====================================================================
+; EL CABALLO SUELTO
+;   Cruza el campo por abajo con tres posturas del paso, se para a
+;   pastar, se encabrita al oir un tiro -no siempre- y, si le dan, o
+;   embiste al que le disparo o sale de estampida; de las dos maneras
+;   acaba perdiendose de vista y no vuelve hasta la partida siguiente.
+;   Al que embiste lo pisa si no se ha apartado a tiempo.
+;
+;   Las tres posturas del paso se dejan desplazadas al pixel en RAM al
+;   empezar la partida (por eso el caballo mira siempre al mismo lado en
+;   una misma partida: espejarlas y volver a desplazarlas cuesta un
+;   quinto de segundo).  Las dos posturas quietas no se mueven del
+;   sitio, asi que basta con desplazar una sola copia al entrar en ellas.
+;=====================================================================
+prepara_caballo:
+            call    azar                    ; a que lado mira esta partida
+            and     1
+            ld      (cab_dir),a
+            ld      hl,cab_x
+            or      a
+            jr      z,pcab_der
+            ld      (hl),CAB_MAX            ; entra por la derecha
+            jr      pcab_sigue
+pcab_der:
+            ld      (hl),0
+pcab_sigue:
+            xor     a
+            ld      (cab_estado),a          ; paseando
+            ld      (cab_paso),a
+            ld      (cab_t),a
+            ld      a,CAB_ANCHO
+            ld      (gen_ancho),a
+            ld      a,CAB_ALTO
+            ld      (gen_alto),a
+            ld      hl,spr_caballo0
+            ld      de,BUF_CABALLO
+            ld      b,CAB_PASOS
+pcab_paso:
+            push    bc
+            push    hl
+            call    cab_fuente              ; espejada, si mira a la izquierda
+            call    genera_desplazados      ; deja DE tras las ocho copias
+            pop     hl
+            ld      bc,CAB_BYTES
+            add     hl,bc
+            pop     bc
+            djnz    pcab_paso
             ret
-ac_mueve:
-            xor     a
-            ld      (caracol_t),a
-            ld      a,(caracol_dir)         ; --- a lo ancho
-            or      a
-            jr      nz,ac_izquierda
-            ld      a,(caracol_x)
-            inc     a
-            cp      CARACOL_MAX+1
-            jr      c,ac_x
-            ld      a,1
-            ld      (caracol_dir),a
-            ld      a,CARACOL_MAX
-            jr      ac_x
-ac_izquierda:
-            ld      a,(caracol_x)
-            dec     a
-            cp      CARACOL_MIN
-            jr      nc,ac_x
-            xor     a
-            ld      (caracol_dir),a
-            ld      a,CARACOL_MIN
-ac_x:
-            ld      (caracol_x),a
-            ld      a,(caracol_dy)          ; --- y a lo alto
-            or      a
-            jr      z,ac_cuenta
-            dec     a
-            jr      z,ac_baja
-            ld      a,(caracol_y)
-            dec     a
-            cp      CARACOL_MIN_Y
-            jr      nc,ac_y
-            ld      a,CARACOL_MIN_Y
-            jr      ac_y
-ac_baja:
-            ld      a,(caracol_y)
-            inc     a
-            cp      CARACOL_MAX_Y+1
-            jr      c,ac_y
-            ld      a,CARACOL_MAX_Y
-ac_y:
-            ld      (caracol_y),a
-ac_cuenta:
-            ld      hl,caracol_n            ; cada tantos pasos, otra idea
-            dec     (hl)
-            jr      nz,ac_pinta
-            call    azar
-            and     %00000011
-            cp      3
-            jr      c,ac_dy
-            xor     a                       ; 0 y 3 = seguir a la misma altura
-ac_dy:
-            ld      (caracol_dy),a
-            call    azar
-            and     %00000011
-            add     a,2                     ; un pixel cada 2 a 5 fotogramas
-            ld      (caracol_paso),a
-            call    azar
-            and     %00011111
-            add     a,16                    ; y aguanta entre 16 y 47 pasos
-            ld      (caracol_n),a
-ac_pinta:
-            ; cae en dibuja_caracol
 
 ;---------------------------------------------------------------------
-; dibuja_caracol - la copia que toca segun el pixel exacto y el sentido
+; cab_fuente - HL = la postura tal cual, o su espejo si el caballo mira
+;   a la izquierda (cada fila al reves, y cada byte con los bits dados
+;   la vuelta)
 ;---------------------------------------------------------------------
-dibuja_caracol:
-            ld      a,(caracol_x)
-            ld      (mov_x),a
-            ld      a,(caracol_y)
-            ld      (mov_y),a
-            ld      a,CARACOL_ANCHO
-            ld      (ancho_bloque),a
-            ld      a,CARACOL_ALTO
-            ld      (mov_alto),a
-            ld      hl,BUF_CARACOL_D
-            ld      a,(caracol_dir)
+cab_fuente:
+            ld      a,(cab_dir)
             or      a
-            jr      z,dc_sentido
-            ld      hl,BUF_CARACOL_I
-dc_sentido:
-            ld      de,CARACOL_BYTES
-            ; cae en dibuja_movil
+            ret     z
+            push    de
+            ld      de,BUF_ESPEJO
+            ld      c,CAB_ALTO
+cfu_fila:
+            push    de
+            ld      a,CAB_ANCHO-1           ; DE, al ultimo byte de la fila
+            add     a,e
+            ld      e,a
+            jr      nc,cfu_ok
+            inc     d
+cfu_ok:
+            ld      b,CAB_ANCHO
+cfu_byte:
+            ld      a,(hl)
+            inc     hl
+            call    invierte_bits
+            ld      (de),a
+            dec     de
+            djnz    cfu_byte
+            pop     de
+            ld      a,CAB_ANCHO             ; y a la fila siguiente
+            add     a,e
+            ld      e,a
+            jr      nc,cfu_sig
+            inc     d
+cfu_sig:
+            dec     c
+            jr      nz,cfu_fila
+            pop     de
+            ld      hl,BUF_ESPEJO
+            ret
+
+invierte_bits:
+            ld      b,8
+            ld      c,0
+ib_bit:
+            rra                             ; sale por abajo
+            rl      c                       ; y entra por arriba
+            djnz    ib_bit
+            ld      a,c
+            ret
+
+;---------------------------------------------------------------------
+; actualiza_caballo - un fotograma de caballo
+;---------------------------------------------------------------------
+actualiza_caballo:
+            ld      a,(cab_estado)
+            cp      CAB_IDO
+            ret     z
+            cp      CAB_PASTA
+            jr      nc,acab_quieto          ; pastando o encabritado
+            ld      c,1                     ; al paso
+            or      a
+            jr      z,acab_anda
+            ld      c,3                     ; embistiendo o de estampida
+acab_anda:
+            ld      a,(cab_dir)
+            or      a
+            ld      a,(cab_x)
+            jr      nz,acab_izq
+            add     a,c                     ; hacia la derecha
+            jr      c,acab_sale
+            cp      CAB_MAX+1
+            jr      nc,acab_sale
+            jr      acab_pon
+acab_izq:
+            sub     c                       ; hacia la izquierda
+            jr      c,acab_sale
+acab_pon:
+            ld      (cab_x),a
+            ld      hl,cab_t                ; el ciclo del paso
+            inc     (hl)
+            ld      a,(hl)
+            cp      CAB_RITMO
+            jr      c,acab_pisa
+            ld      (hl),0
+            ld      hl,cab_paso
+            inc     (hl)
+            ld      a,(hl)
+            cp      4
+            jr      c,acab_pisa
+            ld      (hl),0
+acab_pisa:
+            call    caballo_pisa            ; ¿se lleva a alguien por delante?
+            call    dibuja_caballo
+            ld      a,(cab_estado)          ; solo paseando se le ocurren cosas
+            or      a
+            ret     nz
+            call    azar
+            cp      2                       ; de vez en cuando, a pastar
+            ret     nc
+            ld      a,CAB_PASTA
+            jp      cab_quieta
+
+acab_sale:                                  ; se sale por un lado
+            call    borra_caballo
+            ld      a,(cab_estado)
+            or      a
+            jr      nz,acab_ido             ; si iba lanzado, ya no vuelve
+            ld      a,(cab_dir)             ; paseando, reaparece por el otro
+            or      a
+            ld      a,CAB_MAX
+            jr      nz,acab_borde
+            xor     a
+acab_borde:
+            ld      (cab_x),a
+            ret
+acab_ido:
+            ld      a,CAB_IDO
+            ld      (cab_estado),a
+            ret
+
+acab_quieto:
+            ld      hl,cab_t
+            dec     (hl)
+            jr      nz,acab_sigue_quieto
+            xor     a                       ; se le pasa y vuelve a andar
+            ld      (cab_estado),a
+            ld      (cab_t),a
+            ret
+acab_sigue_quieto:
+            jp      dibuja_caballo
+
+;---------------------------------------------------------------------
+; cab_quieta - se planta: A = estado (pastando o encabritado).  Como no
+;   se mueve del sitio basta con desplazar una copia de la postura
+;---------------------------------------------------------------------
+cab_quieta:
+            ld      (cab_estado),a
+            cp      CAB_PASTA
+            ld      hl,spr_caballo_pasta
+            ld      b,150                   ; lo que dura pastando
+            jr      z,cq_pon
+            ld      hl,spr_caballo_alza
+            ld      b,45
+cq_pon:
+            ld      a,b
+            ld      (cab_t),a
+            push    hl
+            ld      a,CAB_ANCHO
+            ld      (gen_ancho),a
+            ld      a,CAB_ALTO
+            ld      (gen_alto),a
+            pop     hl
+            call    cab_fuente
+            ld      a,(cab_x)
+            and     %00000111
+            ld      (gen_n),a               ; solo el desplazamiento que toca
+            ld      de,BUF_QUIETO
+            call    gd_una
+            ret
+
+;---------------------------------------------------------------------
+; caballo_oye_tiro - cada disparo le puede asustar, pero no siempre
+;---------------------------------------------------------------------
+caballo_oye_tiro:
+            ld      a,(cab_estado)
+            cp      CAB_ALZA
+            ret     nc                      ; ya esta a lo suyo
+            call    azar
+            and     %00000011
+            ret     nz                      ; una de cada cuatro
+            ld      a,CAB_ALZA
+            jp      cab_quieta
+
+;---------------------------------------------------------------------
+; caballo_tocado - le ha dado una bala: o embiste al que le disparo o
+;   sale de estampida, segun le de.  En los dos casos se va.
+;   entrada: A = 0 si la bala venia del bandido, 1 si del sheriff
+;---------------------------------------------------------------------
+caballo_tocado:
+            ld      c,a
+            ld      a,(cab_estado)
+            cp      CAB_EMBISTE             ; si ya va lanzado, ni se entera
+            ret     z
+            cp      CAB_HUYE
+            ret     z
+            cp      CAB_IDO
+            ret     z
+            call    azar
+            and     %00000001
+            jr      z,cab_estampida
+            ld      a,c                     ; embiste hacia quien le tiro
+            ld      (cab_dir),a
+            ld      a,CAB_EMBISTE
+            ld      (cab_estado),a
+            ret
+cab_estampida:
+            ld      a,CAB_HUYE
+            ld      (cab_estado),a
+            ret
+
+;---------------------------------------------------------------------
+; caballo_pisa - si embiste y alcanza a un pistolero que no se ha
+;   apartado a tiempo, se lo lleva por delante
+;---------------------------------------------------------------------
+caballo_pisa:
+            ld      a,(cab_estado)
+            cp      CAB_EMBISTE
+            ret     nz
+            ld      a,(cab_dir)
+            or      a
+            jr      nz,cpisa_izq
+            ld      a,(cab_x)               ; hacia el bandido
+            add     a,CAB_MORRO
+            cp      COL_P2*8
+            ret     c
+            ld      a,(p2_y)
+            add     a,ALTO_SPR-1
+            cp      CAB_Y
+            ret     c                       ; se ha apartado a tiempo
+            pop     hl                      ; no vuelve a actualiza_caballo
+            jp      impacto_ladron
+cpisa_izq:
+            ld      a,(cab_x)               ; hacia el sheriff
+            add     a,8
+            cp      COL_P1*8+ANCHO_JUG*8
+            ret     nc
+            ld      a,(p1_y)
+            add     a,ALTO_SPR-1
+            cp      CAB_Y
+            ret     c
+            pop     hl
+            jp      impacto_poli
+
+;---------------------------------------------------------------------
+; dibuja_caballo / borra_caballo
+;---------------------------------------------------------------------
+dibuja_caballo:
+            ld      a,(cab_estado)
+            cp      CAB_IDO
+            ret     z
+            ld      a,(cab_x)
+            ld      (mov_x),a
+            ld      a,CAB_Y
+            ld      (mov_y),a
+            ld      a,CAB_ANCHO
+            ld      (ancho_bloque),a
+            ld      a,CAB_ALTO
+            ld      (mov_alto),a
+            ld      a,(cab_estado)
+            cp      CAB_PASTA
+            jr      nc,dcab_quieto
+            ld      a,(cab_paso)            ; que postura del ciclo toca
+            ld      e,a
+            ld      d,0
+            ld      hl,cab_ciclo
+            add     hl,de
+            ld      l,(hl)
+            ld      h,0
+            ld      de,CAB_BYTES*8          ; y en que copia esta
+            call    cab_mul
+            ld      de,BUF_CABALLO
+            add     hl,de
+            ld      de,CAB_BYTES
+            jp      dibuja_movil
+dcab_quieto:
+            ld      a,(cab_x)               ; la copia ya esta desplazada
+            rrca
+            rrca
+            rrca
+            and     %00011111
+            ld      c,a
+            ld      de,BUF_QUIETO
+            ld      b,CAB_ALTO
+            ld      a,CAB_Y
+            jp      dibuja_bloque
+
+cab_mul:                                    ; HL = HL * DE (HL vale 0, 1 o 2)
+            ld      a,l
+            ld      hl,0
+            or      a
+            ret     z
+            ld      b,a
+cmul_suma:
+            add     hl,de
+            djnz    cmul_suma
+            ret
+
+borra_caballo:
+            ld      a,(cab_x)
+            rrca
+            rrca
+            rrca
+            and     %00011111
+            ld      c,a
+            ld      a,CAB_ANCHO
+            ld      (ancho_bloque),a
+            ld      b,CAB_ALTO
+            ld      a,CAB_Y
+            jp      borra_bloque
+
+cab_ciclo:       DEFB 0, 1, 2, 1            ; las cuatro pisadas del ciclo
+cab_x:           DEFB 0
+cab_dir:         DEFB 0                     ; 0 a la derecha, 1 a la izquierda
+cab_estado:      DEFB CAB_IDO
+cab_paso:        DEFB 0
+cab_t:           DEFB 0
+
+;---------------------------------------------------------------------
+; mira_caballo - ¿la bala que acaba de chocar era contra el caballo?
+;   entrada: A = x de la bala, B = y
+;---------------------------------------------------------------------
+mira_caballo:
+            ld      c,a
+            ld      a,(cab_estado)
+            cp      CAB_IDO
+            ret     z
+            ld      a,b
+            cp      CAB_Y
+            ret     c
+            cp      CAB_Y+CAB_ALTO
+            ret     nc
+            ld      a,c                     ; la bala se para justo delante
+            ld      hl,cab_x                ; de la tinta, asi que la caja va
+            sub     (hl)                    ; de punta a punta del recuadro
+            ret     c                       ; por delante del caballo
+            cp      CAB_MORRO+4
+            ret     nc                      ; o por detras
+            ld      a,(bal_sent)            ; embiste hacia quien le tiro
+            or      a
+            ld      a,0
+            jr      z,mcab_va
+            ld      a,1
+mcab_va:
+            jp      caballo_tocado
 
 ;---------------------------------------------------------------------
 ; dibuja_movil - vuelca un sprite pre-desplazado en cualquier pixel
@@ -1691,7 +2114,7 @@ dcar_entera:
 ;---------------------------------------------------------------------
 ; mira_bala - ¿hay algo dibujado donde va a caer la bala?
 ;   Con esto una bala choca con lo primero que se cruza, sea el
-;   decorado, una caja o el caracol, sin tablas ni estados aparte.
+;   decorado, un barril o el caballo, sin tablas ni estados aparte.
 ;   entrada: A = x, B = y
 ;   salida : carry = 1 si hay algo
 ;---------------------------------------------------------------------
@@ -2111,37 +2534,37 @@ pantalla_controles:
 
 ;=====================================================================
 ; LOS CREDITOS
-;   La foto del autor, digitalizada a un bit, ocupa la pantalla entera;
-;   por encima sube el texto.  La ventana del scroll no se puede borrar
-;   y volver a pintar, porque debajo esta la foto: cada fotograma se
-;   recompone entera a partir de una copia de la foto ya oscurecida
-;   (BUF_VENTANA) y del lienzo con el texto ya dibujado (BUF_LIENZO),
-;   que se lee con POP para que salgan dos bytes de golpe.
+;   La foto del autor, digitalizada a un bit, ocupa la pantalla entera, y
+;   los rotulos pasan en una marquesina al pie, para no taparle la cara.
+;   El texto no se puede borrar y repintar, porque debajo esta la foto:
+;   se guarda aparte (BUF_TEXTO, 16 filas de 32 bytes) y cada fotograma se
+;   corre un pixel a la izquierda con RL, metiendo por la derecha la
+;   columna que toca del caracter que entra.  Luego la franja se compone
+;   sobre una copia de la foto ya oscurecida: ventana AND NO texto.
 ;=====================================================================
 creditos:
             call    pinta_foto
-            call    arma_lienzo
             call    arma_ventana
-            ld      hl,BUF_LIENZO
-            ld      (cre_ptr),hl
+            call    mq_arranca
             ld      hl,cancion_creditos
             call    pon_cancion
             call    espera_libre
 cre_bucle:
             halt
             call    ay_tick
-            call    cre_pinta
-            call    cre_avanza
+            call    mq_corre
+            call    mq_pinta
             ld      bc,0x00FE               ; cualquier tecla y fuera
             in      a,(c)
             and     %00011111
             cp      %00011111
             jr      z,cre_bucle
-            ret
+            jp      calla_musica
 
 ;---------------------------------------------------------------------
-; pinta_foto - vuelca los 6144 bytes de la foto y deja la pantalla en
-;   blanco y negro (papel 7, tinta 0), que es como esta tramada
+; pinta_foto - vuelca los 6144 bytes de la foto.  Tramada a un bit, pero
+;   con la paleta del juego: papel amarillo y tinta negra, como todo lo
+;   demas, que el blanco se sale del juego de colores
 ;---------------------------------------------------------------------
 pinta_foto:
             ld      hl,foto
@@ -2151,123 +2574,26 @@ pinta_foto:
             ld      hl,ATTRS
             ld      de,ATTRS+1
             ld      bc,768-1
-            ld      (hl),%00111000
+            ld      (hl),ATTR_JUEGO
             ldir
-            ld      a,7
-            out     (0xFE),a                ; borde blanco
+            ld      a,PAPEL
+            out     (0xFE),a                ; borde amarillo
             ret
 
 ;---------------------------------------------------------------------
-; arma_lienzo - dibuja los rotulos en el lienzo del scroll
-;   Las CRE_ALTO primeras filas van en blanco, y otras tantas al final:
-;   asi el bucle puede leer una ventana entera desde cualquier fila sin
-;   salirse, y el texto entra y sale por los bordes.
-;---------------------------------------------------------------------
-arma_lienzo:
-            ld      hl,BUF_LIENZO
-            ld      de,BUF_LIENZO+1
-            ld      bc,CRE_TOTAL*CRE_ANCHO-1
-            ld      (hl),0
-            ldir
-            ld      ix,cre_tabla
-            ld      b,CRE_LINEAS
-            ld      c,CRE_ALTO              ; fila del lienzo de la primera
-al_linea:
-            push    bc
-            ld      l,(ix+0)
-            ld      h,(ix+1)
-            ld      a,h
-            or      l
-            jr      z,al_salta              ; puntero a 0: renglon en blanco
-            ld      b,c                     ; fila
-            ld      c,(ix+2)                ; columna
-            call    lienzo_str
-al_salta:
-            ld      de,3
-            add     ix,de
-            pop     bc
-            ld      a,c
-            add     a,16                    ; un renglon cada 16 filas
-            ld      c,a
-            djnz    al_linea
-            ret
-
-;---------------------------------------------------------------------
-; lienzo_str - escribe una cadena en el lienzo
-;   entrada: HL = cadena, B = fila del lienzo, C = columna (0-23)
-;---------------------------------------------------------------------
-lienzo_str:
-            ld      a,(hl)
-            or      a
-            ret     z
-            push    hl
-            push    bc
-            call    lienzo_char
-            pop     bc
-            pop     hl
-            inc     hl
-            inc     c
-            jr      lienzo_str
-
-;---------------------------------------------------------------------
-; lienzo_char - un caracter del juego de la ROM en el lienzo
-;   entrada: A = codigo, B = fila, C = columna
-;---------------------------------------------------------------------
-lienzo_char:
-            ld      l,a
-            ld      h,0
-            add     hl,hl
-            add     hl,hl
-            add     hl,hl
-            ld      de,FONT
-            add     hl,de
-            push    hl                      ; origen en la fuente
-            ld      h,0
-            ld      l,b
-            add     hl,hl
-            add     hl,hl
-            add     hl,hl                   ; fila * 8
-            ld      d,h
-            ld      e,l
-            add     hl,de
-            add     hl,de                   ; fila * 24
-            ld      de,BUF_LIENZO
-            add     hl,de
-            ld      d,0
-            ld      e,c
-            add     hl,de                   ; + columna
-            ex      de,hl                   ; DE = destino
-            pop     hl                      ; HL = fuente
-            ld      b,8
-lch_fila:
-            ld      a,(hl)
-            ld      c,a
-            srl     c
-            or      c                       ; negrita: se lee mejor sobre la foto
-            ld      (de),a
-            inc     hl
-            push    hl
-            ld      hl,CRE_ANCHO
-            add     hl,de
-            ex      de,hl
-            pop     hl
-            djnz    lch_fila
-            ret
-
-;---------------------------------------------------------------------
-; arma_ventana - copia la franja de foto que tapa el texto y la
-;   oscurece con una trama del 75%, para que las letras en blanco se
+; arma_ventana - copia la franja de foto que tapa la marquesina y la
+;   oscurece con una trama del 87%, para que las letras en blanco se
 ;   lean encima sin perder del todo la imagen
 ;---------------------------------------------------------------------
 arma_ventana:
             ld      de,BUF_VENTANA
-            ld      a,CRE_Y
-            ld      b,CRE_ALTO
+            ld      a,MQ_Y
+            ld      b,MQ_ALTO
 av_fila:
             push    bc
             push    af
-            ld      c,CRE_COL
-            call    scr_addr                ; HL = pantalla(y, columna)
+            ld      c,0
+            call    scr_addr                ; HL = pantalla(y, 0)
             ld      bc,foto-SCREEN
             add     hl,bc                   ; y por tanto HL = foto
             pop     af
@@ -2277,17 +2603,14 @@ av_fila:
             jr      z,av_par
             ld      c,%01111111
 av_par:
-            ld      b,CRE_ANCHO
+            ld      b,32
 av_byte:
             ld      a,(hl)
             or      c
             ld      (de),a
             inc     hl
-            inc     e                       ; la ventana va de 32 en 32
+            inc     de                      ; 32 bytes: justo la fila siguiente
             djnz    av_byte
-            ld      hl,32-CRE_ANCHO
-            add     hl,de
-            ex      de,hl
             pop     af
             inc     a
             pop     bc
@@ -2295,28 +2618,130 @@ av_byte:
             ret
 
 ;---------------------------------------------------------------------
-; cre_pinta - recompone la ventana entera: ventana AND NO texto
-;   El lienzo se lee con SP, asi que hay que quitar las interrupciones
-;   mientras dura (una RST 38 escribiria en medio del lienzo).
+; mq_arranca - la marquesina empieza vacia y por el primer caracter
 ;---------------------------------------------------------------------
-cre_pinta:
+mq_arranca:
+            ld      hl,BUF_TEXTO
+            ld      de,BUF_TEXTO+1
+            ld      bc,MQ_ALTO*32-1
+            ld      (hl),0
+            ldir
+            xor     a
+            ld      (mq_car),a
+            ld      a,%10000000             ; por la columna de mas a la izquierda
+            ld      (mq_mascara),a
+            ret
+
+;---------------------------------------------------------------------
+; mq_corre - un pixel a la izquierda.  Cada fila del texto es un numero
+;   de 32 bytes que se desplaza con RL de derecha a izquierda; el bit que
+;   entra sale de la columna que toque del caracter siguiente.
+;---------------------------------------------------------------------
+mq_corre:
+            call    mq_glifo                ; HL = las 8 filas del caracter
+            ld      de,mq_col               ; el bit que entra por cada fila
+            ld      a,(mq_mascara)
+            ld      c,a
+            ld      b,8
+mq_expande:
+            ld      a,(hl)
+            and     c
+            jr      z,mq_apagado
+            ld      a,1
+mq_apagado:
+            ld      (de),a                  ; a doble alto: dos filas por fila
+            inc     de                      ; del juego de caracteres
+            ld      (de),a
+            inc     de
+            inc     hl
+            djnz    mq_expande
+
+            ld      hl,BUF_TEXTO+31         ; el byte de mas a la derecha
+            ld      de,mq_col
+            ld      c,MQ_ALTO
+mq_fila:
+            ld      a,(de)
+            inc     de
+            or      a
+            jr      z,mq_sin_bit
+            scf
+            jr      mq_rota
+mq_sin_bit:
+            or      a                       ; sin acarreo: entra un cero
+mq_rota:
+            ld      b,32
+mq_byte:
+            rl      (hl)
+            dec     hl
+            djnz    mq_byte
+            ld      a,l                     ; a la fila siguiente
+            add     a,64
+            ld      l,a
+            jr      nc,mq_sigue
+            inc     h
+mq_sigue:
+            dec     c
+            jr      nz,mq_fila
+
+            ld      a,(mq_mascara)          ; la columna siguiente
+            rrca
+            ld      (mq_mascara),a
+            cp      %10000000
+            ret     nz
+            ld      hl,mq_car               ; y, cada ocho, el caracter siguiente
+            inc     (hl)
+            ld      e,(hl)
+            ld      d,0
+            ld      hl,txt_marquesina
+            add     hl,de
+            ld      a,(hl)
+            or      a
+            ret     nz
+            xor     a                       ; se acabo el rotulo: otra vuelta
+            ld      (mq_car),a
+            ret
+
+;---------------------------------------------------------------------
+; mq_glifo - HL = el caracter que esta entrando, en el juego de la ROM
+;---------------------------------------------------------------------
+mq_glifo:
+            ld      a,(mq_car)
+            ld      e,a
+            ld      d,0
+            ld      hl,txt_marquesina
+            add     hl,de
+            ld      l,(hl)
+            ld      h,0
+            add     hl,hl
+            add     hl,hl
+            add     hl,hl
+            ld      de,FONT
+            add     hl,de
+            ret
+
+;---------------------------------------------------------------------
+; mq_pinta - compone la franja: ventana AND NO texto.  El texto se lee
+;   con SP, que trae dos bytes de golpe, asi que hay que quitar las
+;   interrupciones: una RST 38 escribiria justo ahi.
+;---------------------------------------------------------------------
+mq_pinta:
             di
             ld      hl,BUF_VENTANA
-            ld      (cre_ven),hl
-            ld      hl,(cre_ptr)
-            ld      (cre_lie),hl
-            ld      a,CRE_Y
-            ld      b,CRE_ALTO
-cp_fila:
+            ld      (mq_ven),hl
+            ld      hl,BUF_TEXTO
+            ld      (mq_tex),hl
+            ld      a,MQ_Y
+            ld      b,MQ_ALTO
+mqp_fila:
             push    bc
             push    af
-            ld      c,CRE_COL
+            ld      c,0
             call    scr_addr
             ex      de,hl                   ; DE = pantalla
-            ld      hl,(cre_ven)            ; HL = ventana
-            ld      (cre_sp),sp             ; el SP de verdad, con lo apilado
-            ld      sp,(cre_lie)            ; SP = lienzo
-            REPT    CRE_ANCHO/2
+            ld      hl,(mq_ven)             ; HL = ventana
+            ld      (mq_sp),sp
+            ld      sp,(mq_tex)             ; SP = texto
+            REPT    16
             pop     bc
             ld      a,c
             cpl
@@ -2331,63 +2756,26 @@ cp_fila:
             inc     l
             inc     e
             ENDM
-            ld      (cre_lie),sp            ; ya apunta a la fila siguiente
-            ld      sp,(cre_sp)
-            ld      bc,32-CRE_ANCHO
+            ld      (mq_tex),sp             ; ya en la fila siguiente
+            ld      sp,(mq_sp)
+            ld      hl,(mq_ven)             ; la ventana, de 32 en 32 (el INC L
+            ld      bc,32                   ; de arriba no cruza de pagina)
             add     hl,bc
-            ld      (cre_ven),hl
+            ld      (mq_ven),hl
             pop     af
             inc     a
             pop     bc
             dec     b                       ; el bucle no cabe en un DJNZ
-            jp      nz,cp_fila
+            jp      nz,mqp_fila
             ei
             ret
 
-;---------------------------------------------------------------------
-; cre_avanza - sube el texto un pixel, dando la vuelta al final
-;---------------------------------------------------------------------
-cre_avanza:
-            ld      hl,(cre_ptr)
-            ld      de,CRE_ANCHO
-            add     hl,de
-            ld      de,BUF_LIENZO+CRE_LARGO*CRE_ANCHO
-            or      a
-            sbc     hl,de
-            jr      nc,ca_vuelve
-            add     hl,de
-            ld      (cre_ptr),hl
-            ret
-ca_vuelve:
-            ld      de,BUF_LIENZO
-            add     hl,de
-            ld      (cre_ptr),hl
-            ret
-
-cre_tabla:                                  ; puntero, columna (0-23)
-            DEFW    txt_cre_juego
-            DEFB    9
-            DEFW    0
-            DEFB    0
-            DEFW    txt_cre_codigo
-            DEFB    4
-            DEFW    txt_cre_autor
-            DEFB    3
-            DEFW    0
-            DEFB    0
-            DEFW    txt_cre_musica
-            DEFB    9
-            DEFW    txt_cre_autor
-            DEFB    3
-            DEFW    0
-            DEFB    0
-            DEFW    txt_cre_tecla
-            DEFB    4
-
-cre_ptr:         DEFW 0                     ; fila del lienzo por la que va
-cre_lie:         DEFW 0
-cre_ven:         DEFW 0
-cre_sp:          DEFW 0
+mq_car:          DEFB 0                     ; por que caracter va
+mq_mascara:      DEFB %10000000             ; y por que columna suya
+mq_ven:          DEFW 0
+mq_tex:          DEFW 0
+mq_sp:           DEFW 0
+mq_col:          DEFS MQ_ALTO               ; el bit que entra por cada fila
 
 ;---------------------------------------------------------------------
 ; dibuja_marco - recuadro de 2 pixeles alrededor de la pantalla
@@ -3024,15 +3412,185 @@ spr_cara:                ; primer plano, 48x48
             DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ................................................
             DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ................................................
 
-spr_balazo:              ; la bala en primer plano, 24x8
+spr_balazo:              ; la bala en primer plano, 24x8; la punta a la derecha
             DEFB    %00000000, %00000000, %00000000   ; ........................
-            DEFB    %00100011, %11101111, %11111111   ; ..#...#####.############
-            DEFB    %01001111, %11111110, %11111111   ; .#..###########.########
-            DEFB    %10011111, %11111111, %11111111   ; #..#####################
-            DEFB    %10011111, %11111111, %11111111   ; #..#####################
-            DEFB    %01001111, %11111110, %11111111   ; .#..###########.########
-            DEFB    %00100011, %11101111, %11111111   ; ..#...#####.############
+            DEFB    %11111111, %11110111, %11000100   ; ############.#####...#..
+            DEFB    %11111111, %01111111, %11110010   ; ########.###########..#.
+            DEFB    %11111111, %11111111, %11111001   ; #####################..#
+            DEFB    %11111111, %11111111, %11111001   ; #####################..#
+            DEFB    %11111111, %01111111, %11110010   ; ########.###########..#.
+            DEFB    %11111111, %11110111, %11000100   ; ############.#####...#..
             DEFB    %00000000, %00000000, %00000000   ; ........................
+
+spr_caballo0:      ; caballo al paso 1
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000001, %11111000, %00000000   ; .......................................######...........
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000001, %11111100, %00000000   ; .......................................#######..........
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000011, %11111110, %00000000   ; ......................................#########.........
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00001111, %11111111, %00000000   ; ....................................############........
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00011111, %11111111, %10000000   ; ...................................##############.......
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00111111, %11111111, %00000000   ; ..................................##############........
+            DEFB    %00000000, %00111000, %01000000, %00000000, %11111111, %10010010, %00000000   ; ..........###....#..............#########..#..#.........
+            DEFB    %00000000, %00111011, %11111000, %01000111, %11111111, %00000000, %00000000   ; ..........###.#######....#...###########................
+            DEFB    %00000000, %01111111, %11111111, %11111111, %11111110, %00000000, %00000000   ; .........##############################.................
+            DEFB    %00000000, %01111111, %11111111, %11111111, %11111100, %00000000, %00000000   ; .........#############################..................
+            DEFB    %00000000, %01111111, %11111111, %11111111, %11111000, %00000000, %00000000   ; .........############################...................
+            DEFB    %00000000, %11111111, %11111111, %11111111, %11111100, %00000000, %00000000   ; ........##############################..................
+            DEFB    %00000000, %11111111, %11111111, %11111111, %11111000, %00000000, %00000000   ; ........#############################...................
+            DEFB    %00000000, %11101111, %11111111, %11111111, %11111000, %00000000, %00000000   ; ........###.#########################...................
+            DEFB    %00000000, %11100111, %11111111, %11111111, %11111000, %00000000, %00000000   ; ........###..########################...................
+            DEFB    %00000000, %11100011, %11111111, %11111111, %11110000, %00000000, %00000000   ; ........###...######################....................
+            DEFB    %00000000, %01110001, %11111111, %11111111, %11100000, %00000000, %00000000   ; .........###...####################.....................
+            DEFB    %00000000, %01110011, %11111000, %01000011, %11110000, %00000000, %00000000   ; .........###..#######....#....######....................
+            DEFB    %00000000, %01110011, %11111000, %00000011, %11110000, %00000000, %00000000   ; .........###..#######.........######....................
+            DEFB    %00000000, %00100011, %10111000, %00000011, %11110000, %00000000, %00000000   ; ..........#...###.###.........######....................
+            DEFB    %00000000, %00000011, %10111000, %00000011, %11110000, %00000000, %00000000   ; ..............###.###.........######....................
+            DEFB    %00000000, %00000011, %10111000, %00000011, %11110000, %00000000, %00000000   ; ..............###.###.........######....................
+            DEFB    %00000000, %00000111, %10010000, %00000001, %01111000, %00000000, %00000000   ; .............####..#...........#.####...................
+            DEFB    %00000000, %00000111, %00001000, %00000010, %00111000, %00000000, %00000000   ; .............###....#.........#...###...................
+            DEFB    %00000000, %00001111, %00001000, %00000010, %00111100, %00000000, %00000000   ; ............####....#.........#...####..................
+            DEFB    %00000000, %00001110, %00001000, %00000010, %00011100, %00000000, %00000000   ; ............###.....#.........#....###..................
+            DEFB    %00000000, %00011110, %00001111, %00001111, %00011111, %00000000, %00000000   ; ...........####.....####....####...#####................
+            DEFB    %00000000, %00111111, %00011111, %10011111, %10011111, %10000000, %00000000   ; ..........######...######..######..######...............
+            DEFB    %00000000, %00011110, %00001111, %00001111, %00001111, %00000000, %00000000   ; ...........####.....####....####....####................
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ........................................................
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ........................................................
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ........................................................
+
+spr_caballo1:      ; caballo al paso 2
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000001, %11111000, %00000000   ; .......................................######...........
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000001, %11111100, %00000000   ; .......................................#######..........
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000011, %11111110, %00000000   ; ......................................#########.........
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00001111, %11111111, %00000000   ; ....................................############........
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00011111, %11111111, %10000000   ; ...................................##############.......
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00111111, %11111111, %00000000   ; ..................................##############........
+            DEFB    %00000000, %00111000, %01000000, %00000000, %11111111, %10010010, %00000000   ; ..........###....#..............#########..#..#.........
+            DEFB    %00000000, %00111011, %11111000, %01000111, %11111111, %00000000, %00000000   ; ..........###.#######....#...###########................
+            DEFB    %00000000, %01111111, %11111111, %11111111, %11111110, %00000000, %00000000   ; .........##############################.................
+            DEFB    %00000000, %01111111, %11111111, %11111111, %11111100, %00000000, %00000000   ; .........#############################..................
+            DEFB    %00000000, %01111111, %11111111, %11111111, %11111000, %00000000, %00000000   ; .........############################...................
+            DEFB    %00000000, %11111111, %11111111, %11111111, %11111100, %00000000, %00000000   ; ........##############################..................
+            DEFB    %00000000, %11111111, %11111111, %11111111, %11111000, %00000000, %00000000   ; ........#############################...................
+            DEFB    %00000000, %11101111, %11111111, %11111111, %11111000, %00000000, %00000000   ; ........###.#########################...................
+            DEFB    %00000000, %11100111, %11111111, %11111111, %11111000, %00000000, %00000000   ; ........###..########################...................
+            DEFB    %00000000, %11100011, %11111111, %11111111, %11110000, %00000000, %00000000   ; ........###...######################....................
+            DEFB    %00000000, %01110001, %11111111, %11111111, %11100000, %00000000, %00000000   ; .........###...####################.....................
+            DEFB    %00000000, %01110011, %11111000, %01000011, %11110000, %00000000, %00000000   ; .........###..#######....#....######....................
+            DEFB    %00000000, %01110011, %11111000, %00000011, %11110000, %00000000, %00000000   ; .........###..#######.........######....................
+            DEFB    %00000000, %00100011, %11111000, %00000011, %11110000, %00000000, %00000000   ; ..........#...#######.........######....................
+            DEFB    %00000000, %00000011, %10111000, %00000011, %11110000, %00000000, %00000000   ; ..............###.###.........######....................
+            DEFB    %00000000, %00000011, %10111000, %00000011, %11110000, %00000000, %00000000   ; ..............###.###.........######....................
+            DEFB    %00000000, %00000011, %10111000, %00000011, %11110000, %00000000, %00000000   ; ..............###.###.........######....................
+            DEFB    %00000000, %00000011, %10010000, %00000001, %01110000, %00000000, %00000000   ; ..............###..#...........#.###....................
+            DEFB    %00000000, %00000011, %10010000, %00000001, %01110000, %00000000, %00000000   ; ..............###..#...........#.###....................
+            DEFB    %00000000, %00000111, %00010000, %00000001, %00111000, %00000000, %00000000   ; .............###...#...........#..###...................
+            DEFB    %00000000, %00000111, %10111100, %00000011, %11111100, %00000000, %00000000   ; .............####.####........########..................
+            DEFB    %00000000, %00001111, %11111110, %00000111, %11111110, %00000000, %00000000   ; ............###########......##########.................
+            DEFB    %00000000, %00000111, %10111100, %00000011, %11111100, %00000000, %00000000   ; .............####.####........########..................
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ........................................................
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ........................................................
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ........................................................
+
+spr_caballo2:      ; caballo al paso 3
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000001, %11111000, %00000000   ; .......................................######...........
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000001, %11111100, %00000000   ; .......................................#######..........
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000011, %11111110, %00000000   ; ......................................#########.........
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00001111, %11111111, %00000000   ; ....................................############........
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00011111, %11111111, %10000000   ; ...................................##############.......
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00111111, %11111111, %00000000   ; ..................................##############........
+            DEFB    %00000000, %00111000, %01000000, %00000000, %11111111, %10010010, %00000000   ; ..........###....#..............#########..#..#.........
+            DEFB    %00000000, %00111011, %11111000, %01000111, %11111111, %00000000, %00000000   ; ..........###.#######....#...###########................
+            DEFB    %00000000, %01111111, %11111111, %11111111, %11111110, %00000000, %00000000   ; .........##############################.................
+            DEFB    %00000000, %01111111, %11111111, %11111111, %11111100, %00000000, %00000000   ; .........#############################..................
+            DEFB    %00000000, %01111111, %11111111, %11111111, %11111000, %00000000, %00000000   ; .........############################...................
+            DEFB    %00000000, %11111111, %11111111, %11111111, %11111100, %00000000, %00000000   ; ........##############################..................
+            DEFB    %00000000, %11111111, %11111111, %11111111, %11111000, %00000000, %00000000   ; ........#############################...................
+            DEFB    %00000000, %11101111, %11111111, %11111111, %11111000, %00000000, %00000000   ; ........###.#########################...................
+            DEFB    %00000000, %11100111, %11111111, %11111111, %11111000, %00000000, %00000000   ; ........###..########################...................
+            DEFB    %00000000, %11100011, %11111111, %11111111, %11110000, %00000000, %00000000   ; ........###...######################....................
+            DEFB    %00000000, %01110001, %11111111, %11111111, %11100000, %00000000, %00000000   ; .........###...####################.....................
+            DEFB    %00000000, %01110011, %11111000, %01000011, %11110000, %00000000, %00000000   ; .........###..#######....#....######....................
+            DEFB    %00000000, %01110011, %11111000, %00000011, %11110000, %00000000, %00000000   ; .........###..#######.........######....................
+            DEFB    %00000000, %00100011, %10111000, %00000011, %11110000, %00000000, %00000000   ; ..........#...###.###.........######....................
+            DEFB    %00000000, %00000011, %10111000, %00000011, %11110000, %00000000, %00000000   ; ..............###.###.........######....................
+            DEFB    %00000000, %00000011, %10111000, %00000011, %11110000, %00000000, %00000000   ; ..............###.###.........######....................
+            DEFB    %00000000, %00000011, %11010000, %00000001, %11110000, %00000000, %00000000   ; ..............####.#...........#####....................
+            DEFB    %00000000, %00000001, %11100000, %00000000, %11100000, %00000000, %00000000   ; ...............####.............###.....................
+            DEFB    %00000000, %00000001, %11100000, %00000001, %11100000, %00000000, %00000000   ; ...............####............####.....................
+            DEFB    %00000000, %00000000, %11100000, %00000001, %11000000, %00000000, %00000000   ; ................###............###......................
+            DEFB    %00000000, %00000000, %11111000, %00000011, %11110000, %00000000, %00000000   ; ................#####.........######....................
+            DEFB    %00000000, %00000001, %11111100, %00000111, %11111000, %00000000, %00000000   ; ...............#######.......########...................
+            DEFB    %00000000, %00000000, %11111000, %00000011, %11110000, %00000000, %00000000   ; ................#####.........######....................
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ........................................................
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ........................................................
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ........................................................
+
+spr_caballo_pasta: ; caballo pastando
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ........................................................
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ........................................................
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ........................................................
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ........................................................
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ........................................................
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ........................................................
+            DEFB    %00000000, %00111000, %01000000, %00000000, %10000000, %00000000, %00000000   ; ..........###....#..............#.......................
+            DEFB    %00000000, %00111011, %11111000, %01000111, %11110000, %00000000, %00000000   ; ..........###.#######....#...#######....................
+            DEFB    %00000000, %01111111, %11111111, %11111111, %11111000, %00000000, %00000000   ; .........############################...................
+            DEFB    %00000000, %01111111, %11111111, %11111111, %11111000, %00000000, %00000000   ; .........############################...................
+            DEFB    %00000000, %01111111, %11111111, %11111111, %11111000, %00000000, %00000000   ; .........############################...................
+            DEFB    %00000000, %11111111, %11111111, %11111111, %11111100, %00000000, %00000000   ; ........##############################..................
+            DEFB    %00000000, %11111111, %11111111, %11111111, %11111110, %00000000, %00000000   ; ........###############################.................
+            DEFB    %00000000, %11101111, %11111111, %11111111, %11111111, %00000000, %00000000   ; ........###.############################................
+            DEFB    %00000000, %11100111, %11111111, %11111111, %11111111, %10000000, %00000000   ; ........###..############################...............
+            DEFB    %00000000, %11100011, %11111111, %11111111, %11111111, %10000000, %00000000   ; ........###...###########################...............
+            DEFB    %00000000, %01110001, %11111111, %11111111, %11111111, %11000000, %00000000   ; .........###...###########################..............
+            DEFB    %00000000, %01110011, %11111000, %01000011, %11111111, %11100000, %00000000   ; .........###..#######....#....#############.............
+            DEFB    %00000000, %01110011, %11111000, %00000011, %11110111, %11110000, %00000000   ; .........###..#######.........######.#######............
+            DEFB    %00000000, %00100011, %11111000, %00000011, %11110011, %11111100, %00000000   ; ..........#...#######.........######..########..........
+            DEFB    %00000000, %00000011, %10111000, %00000011, %11110001, %11111110, %00000000   ; ..............###.###.........######...########.........
+            DEFB    %00000000, %00000011, %10111000, %00000011, %11110001, %11111111, %00000000   ; ..............###.###.........######...#########........
+            DEFB    %00000000, %00000011, %10111000, %00000011, %11110000, %11111110, %00000000   ; ..............###.###.........######....#######.........
+            DEFB    %00000000, %00000011, %10010000, %00000001, %01110000, %01111111, %00000000   ; ..............###..#...........#.###.....#######........
+            DEFB    %00000000, %00000011, %10010000, %00000001, %01110000, %00011110, %00000000   ; ..............###..#...........#.###.......####.........
+            DEFB    %00000000, %00000111, %00010000, %00000001, %00111000, %00000100, %00000000   ; .............###...#...........#..###........#..........
+            DEFB    %00000000, %00000111, %10111100, %00000011, %11111100, %00000000, %00000000   ; .............####.####........########..................
+            DEFB    %00000000, %00001111, %11111110, %00000111, %11111110, %00000000, %00000000   ; ............###########......##########.................
+            DEFB    %00000000, %00000111, %10111100, %00000011, %11111100, %00000000, %00000000   ; .............####.####........########..................
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ........................................................
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ........................................................
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ........................................................
+
+spr_caballo_alza:  ; caballo encabritado
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000001, %11111100, %00000000   ; .......................................#######..........
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000011, %11111110, %00000000   ; ......................................#########.........
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00001111, %11111111, %00000000   ; ....................................############........
+            DEFB    %00000000, %00000000, %00000000, %00000000, %10011111, %11111111, %10000000   ; ................................#..##############.......
+            DEFB    %00000000, %00000000, %00000000, %00000111, %11111111, %11111111, %00000000   ; .............................###################........
+            DEFB    %00000000, %00000000, %00000000, %00001111, %11111111, %00010010, %00000000   ; ............................############...#..#.........
+            DEFB    %00000000, %00000000, %00000000, %00111111, %11111110, %00000000, %00000000   ; ..........................#############.................
+            DEFB    %00000000, %00000000, %00000000, %01111111, %11111000, %00000000, %00000000   ; .........................############...................
+            DEFB    %00000000, %00000000, %00000000, %11111111, %11111100, %00000000, %00000000   ; ........................##############..................
+            DEFB    %00000000, %00000000, %00000001, %11111111, %11111000, %00000000, %00000000   ; .......................##############...................
+            DEFB    %00000000, %00000000, %00000011, %11111111, %11111000, %00000000, %00000000   ; ......................###############...................
+            DEFB    %00000000, %00000000, %00000111, %11111111, %11111000, %00000000, %00000000   ; .....................################...................
+            DEFB    %00000000, %00000000, %00001111, %11111111, %11111110, %00000000, %00000000   ; ....................###################.................
+            DEFB    %00000000, %00000000, %00011111, %11111111, %11111111, %10000000, %00000000   ; ...................######################...............
+            DEFB    %00000000, %00000000, %00111111, %11111111, %11111111, %11000000, %00000000   ; ..................########################..............
+            DEFB    %00000000, %00000000, %01111111, %11111111, %11111111, %11000000, %00000000   ; .................#########################..............
+            DEFB    %00000000, %00000000, %11111111, %11111110, %11111011, %11000000, %00000000   ; ................###############.#####.####..............
+            DEFB    %00000000, %00000001, %11111111, %11111100, %01111111, %10000000, %00000000   ; ...............###############...########...............
+            DEFB    %00000000, %00001111, %11111111, %11111000, %00011111, %00000000, %00000000   ; ............#################......#####................
+            DEFB    %00000000, %00011111, %11111111, %11110000, %00011111, %10000000, %00000000   ; ...........#################.......######...............
+            DEFB    %00000000, %00111111, %11111111, %11100000, %01111111, %00000000, %00000000   ; ..........#################......#######................
+            DEFB    %00000000, %01111111, %11111111, %11000000, %11111100, %00000000, %00000000   ; .........#################......######..................
+            DEFB    %00000000, %01111111, %11111111, %10000000, %01111000, %00000000, %00000000   ; .........################........####...................
+            DEFB    %00000000, %11111111, %11111111, %00000000, %00000000, %00000000, %00000000   ; ........################................................
+            DEFB    %00000000, %11110111, %11111111, %00000000, %00000000, %00000000, %00000000   ; ........####.###########................................
+            DEFB    %00000000, %11100111, %11111111, %00000000, %00000000, %00000000, %00000000   ; ........###..###########................................
+            DEFB    %00000000, %11100011, %11111110, %00000000, %00000000, %00000000, %00000000   ; ........###...#########.................................
+            DEFB    %00000000, %11100001, %11111110, %00000000, %00000000, %00000000, %00000000   ; ........###....########.................................
+            DEFB    %00000000, %11100011, %11111100, %00000000, %00000000, %00000000, %00000000   ; ........###...########..................................
+            DEFB    %00000000, %11100011, %11011100, %00000000, %00000000, %00000000, %00000000   ; ........###...####.###..................................
+            DEFB    %00000000, %11100011, %11111111, %10000000, %00000000, %00000000, %00000000   ; ........###...###########...............................
+            DEFB    %00000000, %01000001, %11111111, %11000000, %00000000, %00000000, %00000000   ; .........#.....###########..............................
 
 ; ---- letras del logotipo (16x14 pixeles) ----------------------------
 logo_letras:
@@ -3126,67 +3684,7 @@ txt_gana_poli:   DEFB "GANA EL SHERIFF",0
 txt_gana_ladron: DEFB "GANA EL BANDIDO",0
 txt_final:       DEFB "RESULTADO",0
 txt_empate:      DEFB "SIN BALAS: EMPATE",0
-txt_cre_juego:   DEFB "BALAVA",0
-txt_cre_codigo:  DEFB "DESARROLLADO POR",0
-txt_cre_musica:  DEFB "MUSICA",0
-txt_cre_autor:   DEFB "ALEJANDRO MARTINEZ",0
-txt_cre_tecla:   DEFB "PULSA UNA TECLA",0
-
-spr_caracol_d:           ; caracol a la derecha, 48x26 (margen a los cuatro lados)
-            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ................................................
-            DEFB    %00000000, %00000000, %00000000, %00000000, %00100100, %00000000   ; ..................................#..#..........
-            DEFB    %00000000, %00000000, %00000000, %00000000, %00100100, %00000000   ; ..................................#..#..........
-            DEFB    %00000000, %00000000, %00000000, %00000000, %00010100, %00000000   ; ...................................#.#..........
-            DEFB    %00000000, %00000011, %11111100, %00000000, %00011100, %00000000   ; ..............########.............###..........
-            DEFB    %00000000, %00001111, %11111111, %00000000, %00111100, %00000000   ; ............############..........####..........
-            DEFB    %00000000, %00011110, %00000111, %10000000, %01111100, %00000000   ; ...........####......####........#####..........
-            DEFB    %00000000, %00111001, %11111001, %11000000, %11111100, %00000000   ; ..........###..######..###......######..........
-            DEFB    %00000000, %00110011, %00001100, %11000001, %11111100, %00000000   ; ..........##..##....##..##.....#######..........
-            DEFB    %00000000, %01110110, %01100110, %11100011, %11111100, %00000000   ; .........###.##..##..##.###...########..........
-            DEFB    %00000000, %01110110, %11110110, %11100111, %11111100, %00000000   ; .........###.##.####.##.###..#########..........
-            DEFB    %00000000, %01110110, %11110110, %11101111, %11111100, %00000000   ; .........###.##.####.##.###.##########..........
-            DEFB    %00000000, %01110110, %00000110, %11101111, %11111100, %00000000   ; .........###.##......##.###.##########..........
-            DEFB    %00000000, %00110011, %11111100, %11001111, %11111100, %00000000   ; ..........##..########..##..##########..........
-            DEFB    %00000000, %00111000, %00000001, %11011111, %11111100, %00000000   ; ..........###..........###.###########..........
-            DEFB    %00000000, %00011110, %00000111, %10011111, %11111100, %00000000   ; ...........####......####..###########..........
-            DEFB    %00000000, %00001111, %11111111, %00011111, %11111100, %00000000   ; ............############...###########..........
-            DEFB    %00000000, %00000011, %11111100, %00011111, %11111100, %00000000   ; ..............########.....###########..........
-            DEFB    %00000000, %00000000, %00000000, %00011111, %11111100, %00000000   ; ...........................###########..........
-            DEFB    %00000000, %00111111, %11111111, %11111111, %11111110, %00000000   ; ..........#############################.........
-            DEFB    %00000000, %01111111, %11111111, %11111111, %11111110, %00000000   ; .........##############################.........
-            DEFB    %00000000, %01111111, %11111111, %11111111, %11111110, %00000000   ; .........##############################.........
-            DEFB    %00000000, %00111111, %11111111, %11111111, %11111100, %00000000   ; ..........############################..........
-            DEFB    %00000000, %00011111, %11111111, %11111111, %11111000, %00000000   ; ...........##########################...........
-            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ................................................
-            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ................................................
-
-spr_caracol_i:           ; caracol a la izquierda
-            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ................................................
-            DEFB    %00000000, %00100100, %00000000, %00000000, %00000000, %00000000   ; ..........#..#..................................
-            DEFB    %00000000, %00100100, %00000000, %00000000, %00000000, %00000000   ; ..........#..#..................................
-            DEFB    %00000000, %00101000, %00000000, %00000000, %00000000, %00000000   ; ..........#.#...................................
-            DEFB    %00000000, %00111000, %00000000, %00111111, %11000000, %00000000   ; ..........###.............########..............
-            DEFB    %00000000, %00111100, %00000000, %11111111, %11110000, %00000000   ; ..........####..........############............
-            DEFB    %00000000, %00111110, %00000001, %11100000, %01111000, %00000000   ; ..........#####........####......####...........
-            DEFB    %00000000, %00111111, %00000011, %10011111, %10011100, %00000000   ; ..........######......###..######..###..........
-            DEFB    %00000000, %00111111, %10000011, %00110000, %11001100, %00000000   ; ..........#######.....##..##....##..##..........
-            DEFB    %00000000, %00111111, %11000111, %01100110, %01101110, %00000000   ; ..........########...###.##..##..##.###.........
-            DEFB    %00000000, %00111111, %11100111, %01101111, %01101110, %00000000   ; ..........#########..###.##.####.##.###.........
-            DEFB    %00000000, %00111111, %11110111, %01101111, %01101110, %00000000   ; ..........##########.###.##.####.##.###.........
-            DEFB    %00000000, %00111111, %11110111, %01100000, %01101110, %00000000   ; ..........##########.###.##......##.###.........
-            DEFB    %00000000, %00111111, %11110011, %00111111, %11001100, %00000000   ; ..........##########..##..########..##..........
-            DEFB    %00000000, %00111111, %11111011, %10000000, %00011100, %00000000   ; ..........###########.###..........###..........
-            DEFB    %00000000, %00111111, %11111001, %11100000, %01111000, %00000000   ; ..........###########..####......####...........
-            DEFB    %00000000, %00111111, %11111000, %11111111, %11110000, %00000000   ; ..........###########...############............
-            DEFB    %00000000, %00111111, %11111000, %00111111, %11000000, %00000000   ; ..........###########.....########..............
-            DEFB    %00000000, %00111111, %11111000, %00000000, %00000000, %00000000   ; ..........###########...........................
-            DEFB    %00000000, %01111111, %11111111, %11111111, %11111100, %00000000   ; .........#############################..........
-            DEFB    %00000000, %01111111, %11111111, %11111111, %11111110, %00000000   ; .........##############################.........
-            DEFB    %00000000, %01111111, %11111111, %11111111, %11111110, %00000000   ; .........##############################.........
-            DEFB    %00000000, %00111111, %11111111, %11111111, %11111100, %00000000   ; ..........############################..........
-            DEFB    %00000000, %00011111, %11111111, %11111111, %11111000, %00000000   ; ...........##########################...........
-            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ................................................
-            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ................................................
+txt_marquesina:  DEFB "BALAVA   ***   DESARROLLADO POR ALEJANDRO MARTINEZ   ***   MUSICA: ALEJANDRO MARTINEZ   ***   ZX SPECTRUM 128K, 2026   ***   PULSA UNA TECLA PARA VOLVER   ***   ",0
 
 spr_muerto:              ; el pistolero abatido, 24x16
             DEFB    %00000000, %00000000, %00000000   ; ........................
@@ -3765,13 +4263,6 @@ ancho_bloque:    DEFB ANCHO_JUG
 tmp_x:           DEFB 0
 tmp_y:           DEFB 0
 caja_fila:       DEFB 0
-caracol_x:       DEFB CARACOL_MIN
-caracol_y:       DEFB CARACOL_MAX_Y
-caracol_dir:     DEFB 0                  ; 0 = a la derecha, 1 = a la izquierda
-caracol_dy:      DEFB 0                  ; 0 = recto, 1 = baja, 2 = sube
-caracol_t:       DEFB 0
-caracol_paso:    DEFB 3                  ; fotogramas por pixel
-caracol_n:       DEFB 24                 ; pasos hasta cambiar de idea
 semilla:         DEFB 0x5A
 mov_x:           DEFB 0
 mov_y:           DEFB 0
@@ -3784,8 +4275,8 @@ dec_ancho:       DEFB 0
 dec_tabla:       DEFW 0
 dec_buf:         DEFW 0
 gen_n:           DEFB 0
-gen_ancho:       DEFB CARACOL_ANCHO
-gen_alto:        DEFB CARACOL_ALTO
+gen_ancho:       DEFB CAB_ANCHO
+gen_alto:        DEFB CAB_ALTO
 gen_filas:       DEFB 0
 gen_bytes:       DEFB 0
 gen_resto:       DEFB 0
@@ -3794,6 +4285,8 @@ ay_est_b:        DEFS 6
 ay_est_c:        DEFS 6
 ay_num:          DEFB 0
 ay_est:          DEFW 0
+ia_peor_x:       DEFB 0                     ; la bala que le viene mas cerca
+ia_peor_y:       DEFB 0
 ay_par:          DEFB 0
 vel_decae:       DEFB 2
 musica:          DEFB 0

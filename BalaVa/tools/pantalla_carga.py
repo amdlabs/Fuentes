@@ -134,12 +134,65 @@ class Pantalla:
         img.resize((256 * escala_px, 192 * escala_px), Image.NEAREST).save(ruta)
 
 
+def pueblo():
+    """Silueta de un pueblo del oeste abandonado: fachadas falsas, un
+    campanario y el deposito de agua, con los huecos de puertas y ventanas."""
+    an, al = 256, 44
+    g = [['.'] * an for _ in range(al)]
+
+    def bloque(x0, y0, x1, y1, ch='#'):
+        for y in range(max(0, y0), min(al, y1 + 1)):
+            for x in range(max(0, x0), min(an, x1 + 1)):
+                g[y][x] = ch
+
+    def tejado(x0, x1, y, alto):
+        for i in range(alto):
+            bloque(x0 + i * (x1 - x0) // (2 * alto), y - i,
+                   x1 - i * (x1 - x0) // (2 * alto), y - i)
+
+    def casa(x0, x1, alto, falso=False, ventanas=2):
+        cima = al - alto
+        bloque(x0, cima, x1, al - 1)
+        if falso:                                   # fachada recta, mas alta
+            bloque(x0 + 2, cima - 4, x1 - 2, cima)
+        else:
+            tejado(x0 - 2, x1 + 2, cima, 4)
+        ancho = (x1 - x0) // (ventanas + 1)
+        for k in range(ventanas):                   # ventanas vacias
+            vx = x0 + ancho * (k + 1) - 2
+            bloque(vx, cima + 6, vx + 4, cima + 11, '.')
+        bloque((x0 + x1) // 2 - 3, al - 10, (x0 + x1) // 2 + 3, al - 1, '.')
+
+    casa(2, 40, 26, ventanas=2)
+    casa(46, 92, 34, falso=True, ventanas=3)        # el saloon
+    casa(160, 200, 28, ventanas=2)
+    casa(206, 252, 24, falso=True, ventanas=2)
+
+    # el campanario de la iglesia
+    bloque(106, al - 30, 132, al - 1)
+    tejado(104, 134, al - 30, 5)
+    bloque(114, al - 44, 124, al - 30)
+    tejado(112, 126, al - 44, 6)
+    bloque(117, al - 50, 120, al - 44)              # la cruz
+    bloque(114, al - 48, 123, al - 47)
+    bloque(116, al - 22, 122, al - 15, '.')
+
+    # el deposito de agua, sobre sus patas
+    bloque(138, al - 40, 156, al - 28)
+    tejado(136, 158, al - 40, 3)
+    for x in (140, 146, 153):
+        bloque(x, al - 28, x + 1, al - 1)
+    bloque(139, al - 20, 155, al - 19)
+
+    return [''.join(f) for f in g]
+
+
 def compon():
     p = Pantalla()
 
     # ---- cielo: estrella de rayos amarillos y rojos desde el titulo ---
     cx, cy = 16.0, 4.0                          # centro del estallido, en celdas
-    for f in range(2, 17):
+    for f in range(2, 15):
         for c in range(32):
             ang = math.degrees(math.atan2(f - cy, (c - cx) * 0.6)) % 360
             dist = math.hypot((c - cx) * 0.6, f - cy)
@@ -151,7 +204,7 @@ def compon():
     p.papel_celdas(0, 23, 31, 23, NEGRO, 0)
 
     # ---- suelo del desierto ------------------------------------------
-    p.papel_celdas(0, 17, 31, 22, AMARILLO, 0)   # el suelo llega hasta la fila 22
+    p.papel_celdas(0, 15, 31, 22, AMARILLO, 0)   # el suelo, desde la fila 15
 
     # ---- el titulo, sobre una franja amarilla limpia -------------------
     p.papel_celdas(0, 2, 31, 6, AMARILLO, 1)
@@ -161,25 +214,23 @@ def compon():
         p.dibuja(letra, x, 20, ROJO)
         x += len(letra[0]) + 6
 
-    # ---- los dos pistoleros, plantados en el horizonte -----------------
+    # ---- el pueblo fantasma, recortado en el horizonte ----------------
+    p.dibuja(pueblo(), 0, 76, NEGRO)
+
+    # ---- los dos pistoleros, batiendose en duelo ----------------------
     sheriff = escala(lee_arte('spr_poli'), 2)
     bandido = escala(lee_arte('spr_ladron'), 2)
-    p.dibuja(sheriff, 8, 72, NEGRO)             # los pies en y=135
-    p.dibuja(bandido, 200, 72, NEGRO)
+    p.dibuja(sheriff, 4, 119, NEGRO)            # los pies en el suelo
+    p.dibuja(bandido, 204, 119, NEGRO)
 
-    # ---- carreta al fondo, cactus y caracol en el suelo ----------------
-    carreta = escala(lee_arte('spr_carreta'), 2)
-    p.dibuja(carreta, 104, 80, NEGRO)
-    cactus = escala(lee_arte('spr_cactus'), 2)
-    p.dibuja(cactus, 56, 112, NEGRO)
-    p.dibuja(cactus, 168, 112, NEGRO)
-    caracol = escala(recorta(lee_arte('spr_caracol_d')), 2)
-    p.dibuja(caracol, 96, 136, NEGRO)
+    # ---- y el caballo, relinchando de pie sobre las patas traseras ----
+    caballo = escala(recorta(lee_arte('spr_caballo_alza')), 2)
+    p.dibuja(caballo, 96, 119, NEGRO)
 
     # ---- textos ------------------------------------------------------
     p.texto('ZX SPECTRUM 128K', 8, 4, BLANCO)
     p.texto('A. MARTINEZ 2026', 136, 4, BLANCO)
-    p.texto('2 JUGADORES - PULSA UNA TECLA', 40, 185, BLANCO, tam=9)
+    p.texto('1 O 2 JUGADORES - PULSA UNA TECLA', 24, 185, BLANCO, tam=9)
     return p
 
 

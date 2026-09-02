@@ -12,7 +12,7 @@ solo queda esquivar hasta entonces.
 
 Entre medias hay un **barril de whisky** delante de cada uno (a una altura
 distinta cada partida, nunca en la misma línea de tiro), dos cactus, un
-**caracol gigante** que pasea por la parte baja y una **carreta que sube por el
+**caballo suelto** que pasea por la parte baja y una **carreta que sube por el
 centro** hasta perderse por arriba. Todo eso para las balas, y cada bala
 **arranca unos pocos píxeles** de lo que toca: a base de tiros se van abriendo
 troneras por donde luego pasan los disparos, y una bala nunca atraviesa dos
@@ -63,9 +63,11 @@ sonido del AY sintetizado (necesita `imageio-ffmpeg`):
 ## Pantalla de carga
 
 Al arrancar sale una pantalla de carga al estilo de las de 1987: estallido de
-rayos amarillos y rojos, el título en rojo, los dos pistoleros recortados en
-negro, la carreta, los cactus y el caracol, y las bandas negras de arriba y
-abajo. Se queda a la vista hasta que se pulse una tecla.
+rayos amarillos y rojos, el título en rojo, la silueta de un **pueblo fantasma**
+en el horizonte —fachadas falsas, el campanario de la iglesia y el depósito de
+agua—, los dos pistoleros **batiéndose en duelo** y, en medio, el **caballo
+relinchando de pie sobre las patas traseras**. Con sus bandas negras arriba y
+abajo, y se queda a la vista hasta que se pulse una tecla.
 
 **Sin colour clash**: en el Spectrum cada celda de 8x8 admite una sola tinta y
 un solo papel, así que la pantalla se compone *a nivel de celda*. El fondo se
@@ -78,7 +80,8 @@ descuido de composición rompe la compilación en vez de colarse en el juego.
 
 El dibujo no está duplicado: el generador lee los sprites del propio
 `src/balava.asm`, de los comentarios en ASCII que acompañan a cada `DEFB`, y los
-escala al doble.
+escala al doble; el pueblo lo dibuja él con fachadas, tejados y ventanas
+recortadas.
 
 ## Menú
 
@@ -101,31 +104,29 @@ terminar una partida, cualquier tecla devuelve al menú.
 La opción 4 abre los créditos: la **foto del autor digitalizada a un bit**
 ocupando la pantalla entera y, por encima, los rótulos subiendo al píxel con una
 marcha lenta en re menor sonando por el AY —treinta segundos de notas largas,
-bajo pedal y un arpegio que dobla despacio.
+bajo pedal y un arpegio que dobla despacio—, y los rótulos pasando en una
+**marquesina** al pie, para no taparle la cara.
 
 La foto la prepara `tools/foto.py`: recorta a 4:3 sobre la cara, abre las sombras
 con una gamma de 0,72 —si no, los ojos se cierran en dos manchas negras—, realza
 los bordes con una máscara de enfoque y trama con el algoritmo de **Atkinson**,
 el de los digitalizadores de la época, que reparte solo seis octavos del error y
 sale más contrastado y con menos ruido que Floyd-Steinberg. Salen 6144 bytes ya
-en el orden de la memoria de vídeo, así que pintarla es un `LDIR`. Los atributos
-van todos a `PAPER 7 / INK 0`: monocromo de verdad, sin *colour clash* posible.
+en el orden de la memoria de vídeo, así que pintarla es un `LDIR`. 
 
-El scroll no puede borrar y volver a pintar, porque debajo está la foto. Así que
-la ventana del texto se recompone **entera en cada fotograma** a partir de dos
-cosas preparadas de antemano: una copia de la franja de foto ya oscurecida con
-una trama del 87 % (`BUF_VENTANA`, 56x32 bytes) y un lienzo con todo el texto ya
-dibujado (`BUF_LIENZO`, 256 filas de 24 bytes). El montaje es
+La marquesina no puede borrar y volver a pintar, porque debajo está la foto. El
+texto se guarda aparte, en 16 filas de 32 bytes (`BUF_TEXTO`), y cada fotograma
+se corre **un píxel a la izquierda con `RL`**, de derecha a izquierda, metiendo
+por la derecha la columna que toca del carácter que entra —el juego de
+caracteres de la ROM, a doble alto—. Después la franja se compone sobre una
+copia de la foto ya oscurecida con una trama del 87 % (`BUF_VENTANA`):
 `pantalla = ventana AND NO texto`, o sea letras en blanco recortadas sobre la
-foto oscurecida. El lienzo se lee con `POP`, que trae dos bytes en 10 T-estados,
-así que hay que apagar las interrupciones mientras dura: con `SP` apuntando al
-lienzo, una `RST 38` escribiría justo ahí. Son 1344 bytes por fotograma, unos
-59 000 T-estados de los 69 888 que tiene un fotograma.
+foto. El texto se lee con `POP`, que trae dos bytes en 10 T-estados, así que hay
+que apagar las interrupciones mientras dura: con `SP` apuntando al búfer, una
+`RST 38` escribiría justo ahí.
 
-Las letras se guardan en negrita (`a OR (a >> 1)`) porque un trazo de un píxel
-se pierde sobre el tramado. Y el lienzo lleva 56 filas en blanco de más al final,
-copia de las 56 del principio, para que el bucle pueda leer una ventana entera
-desde cualquier fila sin salirse y el texto dé la vuelta sin costura.
+Los atributos van todos a `PAPER 6 / INK 0`, la misma paleta que el resto del
+juego: monocromo de verdad, sin *colour clash* posible.
 
 ## Controles
 
@@ -166,8 +167,9 @@ juego entero: pantalla de carga y el snapshot de 128K —que se relee siguiendo 
 especificación, sin dar por bueno cómo se generó, y se comprueba que los bancos
 salen donde toca y no sobra ni un byte—, menú, logotipo,
 la música del AY —leyendo los registros del chip y comparando las notas con la
-partitura—, pantalla de controles, los créditos —foto, atributos, el texto subiendo y las
-tres voces—, colocación de los barriles, la carreta
+partitura—, pantalla de controles, los créditos —foto, atributos, la marquesina corriendo y
+las tres voces—, el caballo suelto —que camina, mueve las patas y se para a
+pastar—, colocación de los barriles, la carreta
 subiendo, varias balas en el aire a la vez, el marcador de munición hasta
 agotarse, el picado de barriles y cactus, la muerte con su cinemática y su
 funeral, y la máquina jugando sola:
@@ -197,21 +199,27 @@ hace falta ninguna imagen de ROM con derechos.
 - **Carreta**: asoma por abajo en el centro, sube al píxel (uno cada cuatro
   fotogramas), se recorta contra el borde superior hasta desaparecer, espera un
   rato y vuelve a asomar.
-- **Caracol gigante**: pasea por la parte baja del campo. Avanza al píxel,
-  rebota en los lados y cada tantos pasos cambia de altura y de velocidad (lo
-  decide un registro de desplazamiento realimentado), así que la calle que tapa
-  va cambiando y nunca repite recorrido.
+- **Caballo suelto**: pasea por la parte baja con tres posturas del paso
+  —cuatro pisadas por ciclo—, entra por un lado y sale por el otro sin parar, y
+  de vez en cuando se planta a **pastar**. Al oír un tiro, una de cada cuatro
+  veces se **encabrita** sobre las patas traseras. Y si le entra una bala, o
+  **embiste** al que le disparó —al que no se aparta a tiempo se lo lleva por
+  delante— o sale de estampida: de las dos maneras se pierde de vista y no
+  vuelve hasta la partida siguiente.
 - **Balas cruzadas**: dos balas que se encuentran de frente se anulan.
 
 ## La máquina
 
-En la partida a uno, `actualiza_ia` lleva al bandido. Primero mira si alguna de
-las balas del sheriff le viene a la altura del cuerpo: según le apunte a la
-cabeza o a los pies, se agacha o se levanta. Si está despejado, se pone a la
-altura del revólver del sheriff y dispara. Para que no sea infalible, el retardo
-entre tiros y el punto al que apunta salen del generador pseudoaleatorio, así
-que va probando alturas hasta encontrar el hueco entre el barril, los cactus y
-la carreta.
+En la partida a uno, `actualiza_ia` lleva al bandido. Cada fotograma repasa las
+balas que vuelan hacia él y se queda con **la más adelantada de las que le vienen
+al cuerpo**: esa es la que hay que esquivar, y se aparta por el lado del que
+salga antes —arriba si le apunta a los pies, abajo si le apunta a la cabeza—
+salvo que ese lado sea el tope del campo, en cuyo caso tira para el otro. Si está
+despejado se pone a la altura del revólver del sheriff, pero antes comprueba que
+**su propio barril no le tape la línea de tiro**: si se la tapa, se mueve hasta
+rebasarlo en vez de gastar balas contra su parapeto. Para que no sea infalible,
+el retardo entre tiros y el punto al que apunta salen del generador
+pseudoaleatorio.
 
 ## La muerte
 
@@ -222,13 +230,16 @@ bandas negras arriba y abajo:
 
 1. la bala cruzando la pantalla a cámara lenta,
 2. corte seco y **primer plano** del alcanzado (48x48 píxeles duplicados a
-   96x96), con la bala entrando en el plano,
+   96x96) y la bala **atravesándole la cabeza**: entra por un lado, va abriendo
+   un boquete de catorce filas y sale por el otro, y del agujero de salida
+   saltan las esquirlas del cráneo en abanico,
 3. fogonazo —tres inversiones de toda el área de atributos— y
 4. el desplome, en dos planos.
 
 Después el **funeral**: suena la **marcha fúnebre** de Chopin (1839, dominio
 público) mientras la carreta entra por la izquierda, se detiene junto al cuerpo,
-carga el ataúd y se lo lleva fuera de la pantalla. Son unos cinco segundos.
+carga el ataúd y se lo lleva fuera de la pantalla. Son unos cinco segundos. Al volver a
+la partida los dos recargan el cinto: **ocho balas otra vez** para cada uno.
 
 El decorado no se pierde: antes de despejar la pantalla se guardan los trozos de
 memoria de vídeo del decorado y los barriles, y al acabar se reponen **con los
@@ -262,7 +273,9 @@ agujeros que ya tuvieran**.
 - **Choques**: no hay tablas de rectángulos. `mira_bala` lee los píxeles de la
   memoria de vídeo donde va a caer la bala y, si hay algo, `abre_agujero` los
   borra con un AND: un puñado de bytes que valen igual para el decorado, los
-  barriles y el caracol, y que hacen que todo se perfore poco a poco.
+  barriles y el caballo, y que hacen que todo se perfore poco a poco. Lo único
+  que se mira aparte es si la bala se paró dentro del recuadro del caballo, para
+  que el animal reaccione.
 - **Balas**: cada jugador tiene un juego de cuatro ranuras (x, y, activa);
   disparar busca la primera libre, así que se puede tirar sin esperar a la
   anterior. Son bloques de 4x2 píxeles que avanzan 3 píxeles por fotograma y se

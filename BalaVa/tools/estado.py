@@ -47,7 +47,7 @@ GUION = [
     (2, ['B'], None),
     (40, [], 'todo'),
     (60, [], 'todo'),
-    (90, [], 'todo'),                          # caracol y carreta andando
+    (90, [], 'todo'),                          # caballo y carreta andando
 ]
 
 
@@ -60,7 +60,7 @@ def main():
 
     sim = probar.lee_simbolos(os.path.join(RAIZ, 'build', 'balava.sym'))
     variables = ['p1_y', 'p2_y', 'puntos1', 'puntos2', 'balas1', 'balas2',
-                 'caracol_x', 'caracol_y', 'caracol_dir', 'caracol_paso',
+                 'cab_x', 'cab_dir', 'cab_estado', 'cab_paso',
                  'carreta_y', 'barril1_y', 'barril2_y', 'modo_ia', 'semilla']
 
     m = probar.Spectrum(os.path.join(RAIZ, 'build', 'balava.bin'),
