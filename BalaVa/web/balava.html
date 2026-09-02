@@ -155,8 +155,8 @@
         <span style="background:var(--cian)"></span>
       </div>
     </div>
-    <p class="lema">Duelo en el oeste para dos jugadores. ZX Spectrum 48K, 3.3 KB de codigo maquina,
-      corriendo aqui sobre un Z80 emulado en JavaScript.</p>
+    <p class="lema">Duelo en el oeste para uno o dos jugadores. ZX Spectrum 128K, 6 KB de codigo
+      maquina y musica de tres voces por el AY, corriendo aqui sobre un Z80 emulado en JavaScript.</p>
   </header>
 
   <div class="maquina">
@@ -180,8 +180,9 @@
         <button data-tecla="L">BANDIDO ▼</button>
         <button data-tecla="B">DISPARO</button>
       </div>
-      <button data-tecla="1">1 JUGAR</button>
-      <button data-tecla="2">2 CONTROLES</button>
+      <button data-tecla="1">1 UN JUGADOR</button>
+      <button data-tecla="2">2 DOS JUGADORES</button>
+      <button data-tecla="3">3 CONTROLES</button>
     </div>
   </div>
 
@@ -202,17 +203,21 @@
 
   <div class="notas">
     <h2>Como va la partida</h2>
-    <p>Los dos pistoleros solo se mueven arriba y abajo. La carreta y los cactus paran las balas,
-      el <b>caracol</b> cruza el campo despacio tapando calles a su paso, y la <b>caja</b> de cada
-      lado sirve de parapeto pero se rompe a tiros, tramo a tramo: tambien tapa tus propios
-      disparos, asi que abrirte una tronera cuesta municion. Gana el primero que llegue a
-      <b>5 impactos</b>. En el menu, <kbd>1</kbd> juega y <kbd>2</kbd> ensena los controles.</p>
+    <p>Los dos pistoleros solo se mueven arriba y abajo. Cada uno lleva <b>ocho balas</b>, dibujadas
+      arriba: cuando se acaban solo queda esquivar, y si los dos se quedan secos se acaba la
+      partida. Se puede disparar con otras balas en el aire. Cada tiro <b>arranca unos pixeles</b>
+      de lo que toca, asi que los barriles y los cactus se van perforando; los barriles salen a
+      suertes y nunca a la misma altura. El <b>caracol</b> pasea por abajo y el carro sube por el
+      centro. Al que le dan se lo llevan con <b>funeral</b>. En el menu, <kbd>1</kbd> juega contra
+      la maquina, <kbd>2</kbd> es a dos y <kbd>3</kbd> ensena los controles.</p>
     <h2>Que hay debajo</h2>
-    <p>El juego es el mismo binario que corre en un Spectrum real, con su pantalla de carga
+    <p>El juego es el mismo binario que corre en un Spectrum 128K real, con su pantalla de carga
       precargada en la memoria de video. La ROM es <b>sintetica</b> (manejador minimo de la
       interrupcion y un juego de caracteres 8x8): el juego no llama a ninguna rutina del sistema,
-      asi que no hace falta ninguna imagen de ROM con derechos. El nucleo Z80 en JavaScript se
-      comprueba fotograma a fotograma contra un emulador de referencia.</p>
+      asi que no hace falta ninguna imagen de ROM con derechos. La musica va por el <b>AY-3-8912</b>,
+      con sus tres canales sintetizados aqui a partir de los registros que escribe el juego. El
+      nucleo Z80 en JavaScript se comprueba fotograma a fotograma contra un emulador de
+      referencia.</p>
   </div>
 </div>
 
@@ -279,26 +284,52 @@
     }
   }
 
-  // --- sonido ----------------------------------------------------------
+  // --- sonido: sintesis del AY de tres canales -------------------------
   var audio = null, ganancia = null, siguiente = 0, sonando = false;
   var MUESTRAS = 882;                        // 44100 / 50
+  var PASO_AY = (1773400 / 16) / 44100;      // ticks del contador por muestra
+  var cuenta = [0, 0, 0], nivel = [1, 1, 1];
+  var cuentaRuido = 0, lfsr = 1, nivelRuido = 1;
+  var ultimaEntrada = 0, ultimaSalida = 0;   // para quitar la componente continua
+  var VOLUMEN = [0, 0.006, 0.008, 0.011, 0.016, 0.022, 0.032, 0.045,
+                 0.063, 0.089, 0.126, 0.178, 0.251, 0.355, 0.501, 0.708];
+
   function tono() {
     if (!sonando || !audio) return;
+    var ay = maquina.ay;
+    var per = [ay[0] | ((ay[1] & 15) << 8), ay[2] | ((ay[3] & 15) << 8),
+               ay[4] | ((ay[5] & 15) << 8)];
+    var perRuido = (ay[6] & 31) || 1;
+    var mezcla = ay[7];
+    var vol = [ay[8] & 15, ay[9] & 15, ay[10] & 15];
     var buf = audio.createBuffer(1, MUESTRAS, 44100), datos = buf.getChannelData(0);
-    var cambios = maquina.cambios, idx = 0, nivel = nivelPrevio;
     for (var i = 0; i < MUESTRAS; i++) {
-      var limite = (i + 1) * 69888 / MUESTRAS;
-      while (idx < cambios.length && cambios[idx][0] <= limite) { nivel = cambios[idx][1]; idx++; }
-      datos[i] = nivel ? 0.16 : -0.16;
+      cuentaRuido -= PASO_AY;
+      while (cuentaRuido <= 0) {
+        cuentaRuido += perRuido * 2;
+        lfsr = (lfsr >> 1) | ((((lfsr ^ (lfsr >> 3)) & 1)) << 16);
+        nivelRuido = lfsr & 1;
+      }
+      var v = 0;
+      for (var c = 0; c < 3; c++) {
+        var p = per[c] || 1;
+        cuenta[c] -= PASO_AY;
+        while (cuenta[c] <= 0) { cuenta[c] += p; nivel[c] ^= 1; }
+        var conTono = !((mezcla >> c) & 1);
+        var conRuido = !((mezcla >> (c + 3)) & 1);
+        var salida = (conTono ? nivel[c] : 1) & (conRuido ? nivelRuido : 1);
+        if (salida) v += VOLUMEN[vol[c]];
+      }
+      ultimaSalida = v - ultimaEntrada + 0.995 * ultimaSalida;   // filtro de continua
+      ultimaEntrada = v;
+      datos[i] = ultimaSalida;
     }
-    nivelPrevio = nivel;
     var f = audio.createBufferSource();
     f.buffer = buf; f.connect(ganancia);
     if (siguiente < audio.currentTime + 0.02) siguiente = audio.currentTime + 0.06;
     f.start(siguiente);
     siguiente += MUESTRAS / 44100;
   }
-  var nivelPrevio = 0;
 
   var botonSonido = document.getElementById('sonido');
   botonSonido.addEventListener('click', function () {
@@ -322,7 +353,7 @@
   // --- teclado ----------------------------------------------------------
   var MAPA = {
     KeyQ: 'Q', KeyA: 'A', KeyZ: 'Z', KeyP: 'P', KeyL: 'L', KeyB: 'B',
-    Digit1: '1', Digit2: '2', Space: 'SPACE', Enter: 'ENTER',
+    Digit1: '1', Digit2: '2', Digit3: '3', Space: 'SPACE', Enter: 'ENTER',
     KeyM: 'M', KeyN: 'NN', KeyH: 'HH', KeyO: 'O', KeyI: 'I'
   };
   var estado = document.getElementById('estado');

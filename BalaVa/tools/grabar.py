@@ -34,25 +34,25 @@ def carga_probar():
     return mod
 
 
+VOLUMEN = [0, 0.006, 0.008, 0.011, 0.016, 0.022, 0.032, 0.045,
+           0.063, 0.089, 0.126, 0.178, 0.251, 0.355, 0.501, 0.708]
+PASO_AY = (1773400 / 16) / MUESTREO          # ticks del AY por muestra
+
+
 class Grabadora:
-    def __init__(self, probar, z80, sym):
+    def __init__(self, probar, binario, pantalla, sym):
         self.probar = probar
-        self.m = probar.Spectrum(z80)
+        self.m = probar.Spectrum(binario, pantalla)
         self.sim = probar.lee_simbolos(sym)
         self.fotogramas = []
         self.audio = bytearray()
         self.n = 0
-        self.altavoz = 0
-        self.cambios = []                       # (posicion en el frame, nivel)
-        self.m.set_output_callback(self._out)
-
-    def _out(self, addr, valor):
-        if addr & 0xFF == 0xFE:
-            nivel = 1 if valor & 0x10 else 0
-            if nivel != self.altavoz:
-                self.altavoz = nivel
-                pos = TICKS_FRAME - max(0, self.m.ticks_to_stop)
-                self.cambios.append((pos, nivel))
+        self.cuenta = [0.0, 0.0, 0.0]           # estado del AY para el sonido
+        self.nivel = [1, 1, 1]
+        self.cuenta_ruido = 0.0
+        self.lfsr = 1
+        self.nivel_ruido = 1
+        self.continua = [0.0, 0.0]
 
     def val(self, nombre):
         return self.m.peek(self.sim[nombre])
@@ -60,14 +60,12 @@ class Grabadora:
     # --- un fotograma: emula, pinta y genera su trozo de sonido -------
     def frame(self, teclas=()):
         self.m.pulsadas = set(teclas)
-        self.cambios = []
-        nivel_ini = self.altavoz
         self.m.ticks_to_stop = TICKS_FRAME
         while self.m.ticks_to_stop > 0:
             self.m.run()
         self.m.on_handle_active_int()
         self.fotogramas.append(self._pinta())
-        self._sonido(nivel_ini)
+        self._sonido()
         self.n += 1
 
     def frames(self, n, teclas=()):
@@ -103,76 +101,99 @@ class Grabadora:
                     fila[p:p + 3] = bytes(c)
         return bytes(fila)
 
-    def _sonido(self, nivel_ini):
-        n = MUESTREO // 50                      # muestras por fotograma
-        nivel = nivel_ini
-        idx = 0
+    def _sonido(self):
+        """Sintetiza los tres canales del AY con los registros del fotograma."""
+        ay = self.m.ay
+        per = [ay[0] | ((ay[1] & 15) << 8), ay[2] | ((ay[3] & 15) << 8),
+               ay[4] | ((ay[5] & 15) << 8)]
+        per_ruido = (ay[6] & 31) or 1
+        mezcla = ay[7]
+        vol = [ay[8] & 15, ay[9] & 15, ay[10] & 15]
         muestras = bytearray()
-        for i in range(n):
-            limite = (i + 1) * TICKS_FRAME // n
-            while idx < len(self.cambios) and self.cambios[idx][0] <= limite:
-                nivel = self.cambios[idx][1]
-                idx += 1
-            muestras += struct.pack('<h', 7000 if nivel else -7000)
+        for _ in range(MUESTREO // 50):
+            self.cuenta_ruido -= PASO_AY
+            while self.cuenta_ruido <= 0:
+                self.cuenta_ruido += per_ruido * 2
+                bit = (self.lfsr ^ (self.lfsr >> 3)) & 1
+                self.lfsr = (self.lfsr >> 1) | (bit << 16)
+                self.nivel_ruido = self.lfsr & 1
+            v = 0.0
+            for c in range(3):
+                p = per[c] or 1
+                self.cuenta[c] -= PASO_AY
+                while self.cuenta[c] <= 0:
+                    self.cuenta[c] += p
+                    self.nivel[c] ^= 1
+                con_tono = not ((mezcla >> c) & 1)
+                con_ruido = not ((mezcla >> (c + 3)) & 1)
+                if (self.nivel[c] if con_tono else 1) & (self.nivel_ruido if con_ruido else 1):
+                    v += VOLUMEN[vol[c]]
+            salida = v - self.continua[0] + 0.995 * self.continua[1]
+            self.continua = [v, salida]
+            muestras += struct.pack('<h', max(-32000, min(32000, int(salida * 24000))))
         self.audio += muestras
 
 
 def guion(g):
     """La partida que se graba."""
     v = g.val
-    g.frames(130)                                     # pantalla de carga
+    g.frames(150)                                     # pantalla de carga
     g.frames(8, ['SPACE'])
-    g.frames(300)                                     # menu, con musica
-    g.frames(8, ['2'])                                # los controles
-    g.frames(140)
+    g.frames(320)                                     # menu, con la musica del AY
+    g.frames(8, ['3'])                                # los controles
+    g.frames(130)
     g.frames(8, ['SPACE'])
-    g.frames(100)                                     # otra vez el menu
-    g.frames(8, ['1'])                                # a jugar
+    g.frames(90)
+    g.frames(8, ['2'])                                # partida a dos
     g.frames(40)
 
-    # el sheriff baja hasta su caja y le abre una tronera a tiros
-    g.hasta(lambda: v('p1_y') >= 80, ['A'])
-    g.frames(15)
-    for _ in range(3):
-        g.frames(2, ['Z'])
-        g.frames(40)
-    g.frames(25)
+    def calle():
+        ocupado = [(v('barril1_y'), 32), (v('barril2_y'), 32),
+                   (100, 32), (60, 32), (132, 58)]
+        for y in range(20, 158, 2):
+            if all(not (o - 1 <= y + 13 <= o + alto) for o, alto in ocupado):
+                return y
+        return 40
 
-    # un tiro contra el caracol, que anda por abajo
-    g.hasta(lambda: v('p1_y') >= 135, ['A'])
-    g.frames(2, ['Z'])
-    g.frames(70)
-
-    # los dos a la calle libre de arriba: duelo de verdad
-    g.hasta(lambda: v('p1_y') <= 40, ['Q'])
-    g.hasta(lambda: v('p2_y') <= 60, ['P'])
-    g.frames(2, ['Z'])
+    # el sheriff vacia medio cargador contra su barril: se va perforando
+    g.hasta(lambda: v('p1_y') >= v('barril1_y') + 8, ['A'])
+    g.hasta(lambda: v('p1_y') <= v('barril1_y') + 8, ['Q'])
+    for _ in range(4):
+        g.frames(3, ['Z'])
+        g.frames(22)
     g.frames(30)
-    g.hasta(lambda: v('p2_y') >= 90, ['L'])           # el bandido esquiva
-    g.frames(50)
 
-    # y ahora si: impacto, caido y funeral entero
-    g.hasta(lambda: v('p2_y') <= 40, ['P'])
-    g.hasta(lambda: v('p1_y') <= 40, ['Q'])
-    g.frames(20)
-    g.frames(2, ['Z'])
-    g.hasta(lambda: v('puntos1') > 0, [], limite=200)
-    g.frames(60)                                      # el caido, a la vista
-    g.hasta(lambda: v('esc_x') >= 216, [], limite=400) # el funeral entero
-    g.frames(120)                                     # vuelta al juego
+    # tres tiros seguidos por la calle libre, sin esperar a que lleguen
+    objetivo = calle()
+    g.hasta(lambda: v('p1_y') <= objetivo, ['Q'])
+    g.hasta(lambda: v('p1_y') >= objetivo, ['A'])
+    for _ in range(3):
+        g.frames(3, ['Z'])
+        g.frames(10)
+    g.frames(60)
+
+    # el bandido responde y mata al sheriff: cine y funeral
+    g.hasta(lambda: v('p2_y') <= objetivo, ['P'])
+    g.hasta(lambda: v('p2_y') >= objetivo, ['L'])
+    g.frames(15)
+    g.frames(3, ['B'])
+    g.hasta(lambda: v('puntos2') > 0, [], limite=250)
+    g.hasta(lambda: v('p1_y') == 40 and v('p2_y') == 120, [], limite=900)
+    g.frames(80)
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--salida', default=os.path.join(RAIZ, 'dist', 'balava.mp4'))
-    ap.add_argument('--z80', default=os.path.join(RAIZ, 'dist', 'balava.z80'))
+    ap.add_argument('--bin', default=os.path.join(RAIZ, 'build', 'balava.bin'))
+    ap.add_argument('--scr', default=os.path.join(RAIZ, 'dist', 'balava.scr'))
     ap.add_argument('--sym', default=os.path.join(RAIZ, 'build', 'balava.sym'))
     ap.add_argument('--escala', type=int, default=3)
     args = ap.parse_args()
 
     import imageio_ffmpeg
     probar = carga_probar()
-    g = Grabadora(probar, args.z80, args.sym)
+    g = Grabadora(probar, args.bin, args.scr, args.sym)
     guion(g)
     print(f'{g.n} fotogramas ({g.n / 50:.1f} s)')
 

@@ -19,6 +19,8 @@
     this.teclas = {};                 // "fila,bit" -> pulsada
     this.borde = 0;
     this.altavoz = 0;
+    this.ay = new Uint8Array(16);      // registros del AY del 128K
+    this.ayReg = 0;
     this.cambios = [];                // [t, nivel] del altavoz dentro del frame
     this.tFrame = 0;
     this.reset();
@@ -72,6 +74,8 @@
   };
 
   p.salida = function (puerto, v) {
+    if ((puerto & 0xc002) === 0xc000) { this.ayReg = v & 0x0f; return; }   // 0xFFFD
+    if ((puerto & 0xc002) === 0x8000) { this.ay[this.ayReg] = v; return; } // 0xBFFD
     if (puerto & 1) return;
     this.borde = v & 7;
     var nivel = (v >> 4) & 1;

@@ -1,10 +1,13 @@
 ;=====================================================================
-;  B A L A V A   -  ZX Spectrum 48K  -  2 jugadores
+;  B A L A V A   -  ZX Spectrum 128K  -  1 o 2 jugadores
 ;---------------------------------------------------------------------
 ;  Duelo en el oeste: el sheriff (izquierda) y el bandido (derecha) se
 ;  disparan de lado a lado.  Solo pueden moverse arriba y abajo para
-;  esquivar las balas, y la carreta y los dos cactus del centro paran
-;  los disparos, asi que hay que buscar el hueco.
+;  esquivar las balas, y la carreta, los cactus, los barriles de whisky
+;  y el caracol paran los disparos, asi que hay que buscar el hueco.
+;  Ocho balas cada uno, hasta cuatro en el aire a la vez; cuando los dos
+;  se quedan secos se acaba la partida.  A un jugador, el bandido lo
+;  lleva la maquina.  La musica va por el AY, a tres voces.
 ;  Fondo amarillo (PAPER 6), sprites en negro (INK 0).
 ;
 ;  Controles:
@@ -27,7 +30,7 @@ COL_P2      EQU 28                  ; primera columna del bandido (x = 224)
 ANCHO_JUG   EQU 3                   ; 24 pixeles de ancho
 ALTO_SPR    EQU 32                  ; 32 pixeles de alto
 
-MIN_Y       EQU 16                  ; limite superior del campo de juego
+MIN_Y       EQU 18                  ; limite superior del campo de juego
 MAX_Y       EQU 160                 ; limite inferior (160 + 31 = 191)
 VEL_JUG     EQU 1                   ; pixeles por fotograma (movimiento fino)
 
@@ -35,6 +38,8 @@ P1_INI_Y    EQU 40
 P2_INI_Y    EQU 120
 
 VEL_BALA    EQU 3                   ; pixeles por fotograma
+NUM_BALAS   EQU 4                   ; balas de cada uno en el aire a la vez
+MUNICION    EQU 8                   ; y cuantas lleva en el cinto
 BALA_DY     EQU 13                  ; altura del revolver dentro del sprite
 BAL_INI_1   EQU 32                  ; x de salida de la bala del sheriff
 BAL_FIN_1   EQU 224                 ; x donde alcanza al bandido
@@ -42,20 +47,20 @@ BAL_INI_2   EQU 220                 ; x de salida de la bala del bandido
 BAL_FIN_2   EQU 28                  ; x donde alcanza al sheriff
 
 ; --- decorado (tambien para la tabla de obstaculos) -------------------
-CARRETA_COL EQU 14                  ; x = 112 .. 135
-CARRETA_Y   EQU 20                  ; y =  20 ..  47
+CARRETA_COL EQU 14                  ; x = 112 .. 135, sube por el centro
 CARRETA_ALTO EQU 28
+CARRETA_ABAJO EQU 163               ; por donde asoma
+CARRETA_LENTO EQU 4                 ; un pixel cada 4 fotogramas
 CACTUS_ALTO EQU 32
 CACTUS1_COL EQU 8                   ; x =  64 ..  79
 CACTUS1_Y   EQU 100                 ; y = 100 .. 131
 CACTUS2_COL EQU 21                  ; x = 168 .. 183
 CACTUS2_Y   EQU 60                  ; y =  60 ..  91
 
-; --- cajas rompibles (una delante de cada pistolero) ------------------
+; --- barriles de whisky (uno delante de cada pistolero) ---------------
 CAJA1_COL   EQU 5                   ; x =  40 ..  55
 CAJA2_COL   EQU 25                  ; x = 200 .. 215
-CAJA_Y      EQU 80                  ; y =  80 .. 111
-CAJA_ALTO   EQU 32                  ; cuatro tramos de 8 pixeles
+CAJA_ALTO   EQU 32                  ; su altura sale a suertes cada partida
 
 ; --- el caracol gigante que cruza el campo ----------------------------
 CARACOL_ALTO EQU 26                 ; 24 de bicho y una fila en blanco arriba
@@ -76,7 +81,7 @@ ESC_CARRETA_Y EQU 108               ; la carreta cruza por aqui
 ESC_ATAUD_Y EQU 92                  ; el ataud va encima de ella
 ESC_CUERPO_Y EQU 120                ; el caido espera en el suelo
 ESC_CUERPO_COL EQU 17
-ESC_PASO    EQU 3                   ; pixeles por nota
+ESC_PASO    EQU 1                   ; pixeles por fotograma
 ESC_PARADA  EQU 104                 ; donde recoge el ataud
 ESC_FIN     EQU 216                 ; y por donde se va
 
@@ -85,7 +90,12 @@ BUF_CARACOL_D EQU 0xE000            ; 8 copias desplazadas de cada cosa
 BUF_CARACOL_I EQU BUF_CARACOL_D+CARACOL_BYTES*8
 BUF_CARRETA EQU BUF_CARACOL_I+CARACOL_BYTES*8
 BUF_ATAUD   EQU BUF_CARRETA+CARRETA_BYTES*8
-BUF_DECORADO EQU BUF_ATAUD+ATAUD_BYTES*8          ; copia del decorado
+BALAZO_ANCHO EQU 5                  ; la bala en primer plano, con margenes
+BALAZO_ALTO EQU 8
+BALAZO_BYTES EQU BALAZO_ANCHO*BALAZO_ALTO
+BUF_BALAZO  EQU BUF_ATAUD+ATAUD_BYTES*8
+BUF_DECORADO EQU BUF_BALAZO+BALAZO_BYTES*8        ; copia del decorado
+CARA_ANCHO  EQU 6                   ; el primer plano, 48x48
 
 PUNTOS_WIN  EQU 5                   ; impactos para ganar la partida
 
@@ -123,6 +133,14 @@ inicio:
             ld      hl,spr_ataud_m
             ld      de,BUF_ATAUD
             call    genera_desplazados
+            ld      a,BALAZO_ANCHO
+            ld      (gen_ancho),a
+            ld      a,BALAZO_ALTO
+            ld      (gen_alto),a
+            ld      hl,spr_balazo_m
+            ld      de,BUF_BALAZO
+            call    genera_desplazados
+            call    ay_init
             im      1
             ei
             ; la pantalla de carga ya viene dibujada en el snapshot: se
@@ -169,33 +187,60 @@ partida:
             ld      a,CARACOL_MAX_Y
             ld      (caracol_y),a
 
+            call    coloca_barriles         ; cada partida, en otro sitio
+            ld      a,MUNICION
+            ld      (balas1),a
+            ld      (balas2),a
+            ld      a,CARRETA_ABAJO
+            ld      (carreta_y),a
+            call    limpia_balas
             call    limpia_pantalla
             call    dibuja_marcador
             call    dibuja_escenario
             call    dibuja_cajas
             call    dibuja_caracol
+            call    dibuja_carreta
             call    hud_puntos
+            call    hud_municion
             call    coloca_jugadores
 
 bucle:
             halt                            ; sincroniza a 50 Hz
-            call    actualiza_p1
-            call    actualiza_p2
-            call    actualiza_bala1
-            call    actualiza_bala2
+            call    ay_tick                 ; un fotograma de musica
+            call    borra_balas             ; primero se quitan todas de en
+            call    actualiza_p1            ; medio (asi no se estorban al
+            ld      a,(modo_ia)             ; mirar los pixeles), luego se
+            or      a
+            call    z,actualiza_p2
+            ld      a,(modo_ia)
+            or      a
+            call    nz,actualiza_ia
+            call    mueve_balas             ; mueven y al final se pintan
+            call    pinta_balas             ; las que sigan vivas
             call    actualiza_caracol
+            call    actualiza_carreta
 
             ld      a,(puntos1)
             cp      PUNTOS_WIN
             jr      z,gana_poli
             ld      a,(puntos2)
             cp      PUNTOS_WIN
-            jr      z,gana_ladron
-            jr      bucle
-
+            jp      z,gana_ladron
+            call    quedan_balas            ; ¿se acabo la municion?
+            jr      nz,bucle
+            ld      a,(puntos1)
+            ld      hl,puntos2
+            cp      (hl)
+            jr      c,gana_ladron
+            jp      z,fin_empate
 gana_poli:
+
             ld      hl,txt_gana_poli
             ld      c,8
+            jr      fin_partida
+fin_empate:
+            ld      hl,txt_empate
+            ld      c,10
             jr      fin_partida
 gana_ladron:
             ld      hl,txt_gana_ladron
@@ -249,7 +294,7 @@ coloca_jugadores:
             jp      dibuja_jugador
 
 ;=====================================================================
-; JUGADOR 1 - POLICIA   (Q arriba / A abajo / V dispara)
+; JUGADOR 1 - SHERIFF   (Q arriba / A abajo / Z dispara)
 ;=====================================================================
 actualiza_p1:
             ld      bc,0xFBFE               ; fila Q W E R T
@@ -262,6 +307,11 @@ actualiza_p1:
             call    sube
             ld      (p1_y),a
             jr      ap1_tiro
+ap1_suelta:
+            xor     a
+            ld      (tecla1),a
+            ret
+
 ap1_no_sube:
             ld      bc,0xFDFE               ; fila A S D F G
             in      a,(c)
@@ -276,25 +326,16 @@ ap1_tiro:
             ld      bc,0xFEFE               ; fila CAPS Z X C V
             in      a,(c)
             and     %00000010               ; Z
-            ret     nz
-            ld      a,(b1_act)
+            jr      nz,ap1_suelta
+            ld      a,(tecla1)              ; un tiro por pulsacion
             or      a
-            ret     nz                      ; ya tiene una bala en vuelo
-            ld      a,BAL_INI_1
-            ld      (b1_x),a
-            ld      a,(p1_y)
-            add     a,BALA_DY               ; altura del revolver
-            ld      (b1_y),a
+            ret     nz
             ld      a,1
-            ld      (b1_act),a
-            ld      a,(b1_y)
-            ld      b,a
-            ld      a,(b1_x)
-            call    bala_xor
-            jp      sonido_tiro
+            ld      (tecla1),a
+            jp      dispara1
 
 ;=====================================================================
-; JUGADOR 2 - LADRON   (P arriba / L abajo / ESPACIO dispara)
+; JUGADOR 2 - BANDIDO   (P arriba / L abajo / B dispara)
 ;=====================================================================
 actualiza_p2:
             ld      bc,0xDFFE               ; fila P O I U Y
@@ -321,168 +362,242 @@ ap2_tiro:
             ld      bc,0x7FFE               ; fila SPACE SYM M N B
             in      a,(c)
             and     %00010000               ; B
-            ret     nz
-            ld      a,(b2_act)
+            jr      nz,ap2_suelta
+            ld      a,(tecla2)
             or      a
             ret     nz
-            ld      a,BAL_INI_2
-            ld      (b2_x),a
-            ld      a,(p2_y)
-            add     a,BALA_DY
-            ld      (b2_y),a
             ld      a,1
-            ld      (b2_act),a
-            ld      a,(b2_y)
-            ld      b,a
-            ld      a,(b2_x)
-            call    bala_xor
+            ld      (tecla2),a
+            jp      dispara2
+ap2_suelta:
+            xor     a
+            ld      (tecla2),a
+            ret
+
+;=====================================================================
+; LAS BALAS
+;   Cada jugador lleva NUM_BALAS ranuras (x, y, activa) y MUNICION tiros
+;   en el cinto.  Se puede disparar con otras balas en el aire: ninguna
+;   pisa a la anterior.  El ciclo va en tres pasadas para que al mirar
+;   los pixeles no se vean unas balas a otras.
+;=====================================================================
+limpia_balas:
+            ld      hl,b1
+            ld      de,b1+1
+            ld      bc,NUM_BALAS*3*2-1
+            ld      (hl),0
+            ldir
+            ret
+
+;---------------------------------------------------------------------
+; dispara1 / dispara2 - saca una bala si queda hueco y municion
+;---------------------------------------------------------------------
+dispara1:
+            ld      a,(balas1)
+            or      a
+            ret     z                       ; sin municion, a esquivar
+            ld      hl,b1
+            call    busca_hueco
+            ret     c                       ; las cuatro en el aire
+            ld      a,BAL_INI_1
+            ld      (hl),a
+            inc     hl
+            ld      a,(p1_y)
+            add     a,BALA_DY
+            ld      (hl),a
+            inc     hl
+            ld      (hl),1
+            ld      hl,balas1
+            dec     (hl)
+            call    hud_municion
             jp      sonido_tiro
 
-;=====================================================================
-; BALA DEL POLICIA (viaja hacia la derecha)
-;=====================================================================
-actualiza_bala1:
-            ld      a,(b1_act)
+dispara2:
+            ld      a,(balas2)
             or      a
             ret     z
-            ld      a,(b1_y)                ; borrar en la posicion actual
-            ld      b,a
-            ld      a,(b1_x)
-            call    bala_xor
-            ld      a,(b1_x)                ; avanzar
-            add     a,VEL_BALA
-            ld      (b1_x),a
-            cp      BAL_FIN_1
-            jr      c,ab1_decorado
-            xor     a                       ; ha llegado al ladron
-            ld      (b1_act),a
-            ld      a,(b1_y)
-            inc     a                       ; fila inferior de la bala
-            ld      hl,p2_y
-            sub     (hl)                    ; A = bala_abajo - jugador_arriba
-            ret     c                       ; pasa por encima
-            cp      ALTO_SPR+1
-            ret     nc                      ; pasa por debajo
-            jp      impacto_ladron
-ab1_decorado:
-            ld      a,(b2_act)          ; ¿se cruza con la otra bala?
-            or      a
-            jr      z,ab1_mira
-            ld      a,(b1_x)
-            ld      hl,b2_x
-            sub     (hl)
-            jr      nc,ab1_dx
-            neg
-ab1_dx:
-            cp      4
-            jr      nc,ab1_mira
-            ld      a,(b1_y)
-            ld      hl,b2_y
-            sub     (hl)
-            jr      nc,ab1_dy
-            neg
-ab1_dy:
-            cp      2
-            jr      nc,ab1_mira
-            ld      a,(b2_y)            ; las dos se anulan en el aire
-            ld      b,a
-            ld      a,(b2_x)
-            call    bala_xor
-            xor     a
-            ld      (b2_act),a
-            ld      (b1_act),a
-            jp      sonido_rebote
-ab1_mira:
-            ld      a,(b1_y)
-            ld      b,a
-            ld      a,(b1_x)
-            call    mira_bala               ; ¿hay algo en el camino?
-            jr      nc,ab1_pinta
-            ld      a,(b1_y)
-            ld      b,a
-            ld      a,(b1_x)
-            call    abre_agujero            ; le arranca unos pixeles
-            xor     a
-            ld      (b1_act),a
-            jp      sonido_rebote
-ab1_pinta:
-            ld      a,(b1_y)
-            ld      b,a
-            ld      a,(b1_x)
-            jp      bala_xor
-
-;=====================================================================
-; BALA DEL LADRON (viaja hacia la izquierda)
-;=====================================================================
-actualiza_bala2:
-            ld      a,(b2_act)
-            or      a
-            ret     z
-            ld      a,(b2_y)
-            ld      b,a
-            ld      a,(b2_x)
-            call    bala_xor
-            ld      a,(b2_x)
-            sub     VEL_BALA
-            ld      (b2_x),a
-            cp      BAL_FIN_2+1
-            jr      nc,ab2_decorado
-            xor     a                       ; ha llegado al policia
-            ld      (b2_act),a
-            ld      a,(b2_y)
-            inc     a
-            ld      hl,p1_y
-            sub     (hl)
+            ld      hl,b2
+            call    busca_hueco
             ret     c
-            cp      ALTO_SPR+1
-            ret     nc
-            jp      impacto_poli
-ab2_decorado:
-            ld      a,(b1_act)          ; ¿se cruza con la otra bala?
+            ld      a,BAL_INI_2
+            ld      (hl),a
+            inc     hl
+            ld      a,(p2_y)
+            add     a,BALA_DY
+            ld      (hl),a
+            inc     hl
+            ld      (hl),1
+            ld      hl,balas2
+            dec     (hl)
+            call    hud_municion
+            jp      sonido_tiro
+
+;---------------------------------------------------------------------
+; busca_hueco - HL = primera ranura libre;  carry = no queda ninguna
+;---------------------------------------------------------------------
+busca_hueco:
+            ld      b,NUM_BALAS
+bh_ranura:
+            inc     hl
+            inc     hl
+            ld      a,(hl)
+            dec     hl
+            dec     hl
             or      a
-            jr      z,ab2_mira
-            ld      a,(b2_x)
-            ld      hl,b1_x
-            sub     (hl)
-            jr      nc,ab2_dx
-            neg
-ab2_dx:
-            cp      4
-            jr      nc,ab2_mira
-            ld      a,(b2_y)
-            ld      hl,b1_y
-            sub     (hl)
-            jr      nc,ab2_dy
-            neg
-ab2_dy:
-            cp      2
-            jr      nc,ab2_mira
-            ld      a,(b1_y)            ; las dos se anulan en el aire
-            ld      b,a
-            ld      a,(b1_x)
+            ret     z
+            ld      de,3
+            add     hl,de
+            djnz    bh_ranura
+            scf
+            ret
+
+;---------------------------------------------------------------------
+; quedan_balas - Z si no queda municion ni balas en el aire
+;---------------------------------------------------------------------
+quedan_balas:
+            ld      a,(balas1)
+            ld      hl,balas2
+            or      (hl)
+            ret     nz
+            ld      hl,b1                   ; ¿y en el aire?
+            call    qb_pool
+            ret     nz
+            ld      hl,b2
+qb_pool:
+            ld      b,NUM_BALAS
+qb_ranura:
+            inc     hl
+            inc     hl
+            ld      a,(hl)
+            or      a
+            ret     nz
+            inc     hl
+            djnz    qb_ranura
+            ret                             ; Z: ninguna viva
+
+;---------------------------------------------------------------------
+; borra_balas / pinta_balas - las quita o las pone todas
+;---------------------------------------------------------------------
+borra_balas:
+pinta_balas:
+            ld      hl,b1
+            call    bp_pool
+            ld      hl,b2
+bp_pool:
+            ld      b,NUM_BALAS
+bp_ranura:
+            push    bc
+            push    hl
+            inc     hl
+            inc     hl
+            ld      a,(hl)
+            or      a
+            jr      z,bp_sig
+            dec     hl
+            ld      b,(hl)                  ; y
+            dec     hl
+            ld      a,(hl)                  ; x
             call    bala_xor
-            xor     a
-            ld      (b1_act),a
-            ld      (b2_act),a
-            jp      sonido_rebote
-ab2_mira:
-            ld      a,(b2_y)
-            ld      b,a
-            ld      a,(b2_x)
-            call    mira_bala               ; ¿hay algo en el camino?
-            jr      nc,ab2_pinta
-            ld      a,(b2_y)
-            ld      b,a
-            ld      a,(b2_x)
+bp_sig:
+            pop     hl
+            ld      de,3
+            add     hl,de
+            pop     bc
+            djnz    bp_ranura
+            ret
+
+;---------------------------------------------------------------------
+; mueve_balas - avanza cada bala y mira contra que choca
+;---------------------------------------------------------------------
+mueve_balas:
+            ld      a,1                     ; las del sheriff, a la derecha
+            ld      (bal_sent),a
+            ld      hl,b1
+            call    mb_pool
+            xor     a                       ; las del bandido, a la izquierda
+            ld      (bal_sent),a
+            ld      hl,b2
+mb_pool:
+            ld      b,NUM_BALAS
+mb_ranura:
+            push    bc
+            push    hl
+            inc     hl
+            inc     hl
+            ld      a,(hl)
+            or      a
+            jr      z,mb_sig
+            pop     hl
+            push    hl
+            call    mueve_una
+mb_sig:
+            pop     hl
+            ld      de,3
+            add     hl,de
+            pop     bc
+            djnz    mb_ranura
+            ret
+
+;---------------------------------------------------------------------
+; mueve_una - una bala:  HL = ranura (x, y, activa)
+;---------------------------------------------------------------------
+mueve_una:
+            ld      (bal_ranura),hl
+            ld      a,(bal_sent)
+            or      a
+            jr      z,mu_izquierda
+            ld      a,(hl)                  ; hacia la derecha
+            add     a,VEL_BALA
+            ld      (hl),a
+            cp      BAL_FIN_1
+            jr      c,mu_sigue
+            ld      hl,p2_y                 ; ha llegado al bandido
+            jr      mu_llega
+mu_izquierda:
+            ld      a,(hl)
+            sub     VEL_BALA
+            ld      (hl),a
+            cp      BAL_FIN_2+1
+            jr      nc,mu_sigue
+            ld      hl,p1_y                 ; ha llegado al sheriff
+mu_llega:
+            ld      c,(hl)                  ; C = y del rival
+            call    mu_apaga
+            ld      hl,(bal_ranura)
+            inc     hl
+            ld      a,(hl)                  ; y de la bala
+            inc     a
+            sub     c
+            ret     c                       ; le pasa por encima
+            cp      ALTO_SPR+1
+            ret     nc                      ; o por debajo
+            ld      a,(bal_sent)
+            or      a
+            jp      nz,impacto_ladron
+            jp      impacto_poli
+mu_sigue:
+            ld      hl,(bal_ranura)
+            inc     hl
+            ld      b,(hl)                  ; y
+            dec     hl
+            ld      a,(hl)                  ; x
+            call    mira_bala               ; ¿hay algo delante?
+            ret     nc
+            ld      hl,(bal_ranura)
+            inc     hl
+            ld      b,(hl)
+            dec     hl
+            ld      a,(hl)
             call    abre_agujero            ; le arranca unos pixeles
-            xor     a
-            ld      (b2_act),a
+            call    mu_apaga
             jp      sonido_rebote
-ab2_pinta:
-            ld      a,(b2_y)
-            ld      b,a
-            ld      a,(b2_x)
-            jp      bala_xor
+
+mu_apaga:
+            ld      hl,(bal_ranura)
+            inc     hl
+            inc     hl
+            ld      (hl),0
+            ret
 
 ;=====================================================================
 ; IMPACTOS
@@ -511,16 +626,35 @@ impacto_comun:                              ; A = y del caido, C = su columna
             call    borra_jugador
             ld      a,ANCHO_JUG
             ld      (ancho_bloque),a
+            ld      a,(caido_col)           ; primero se dobla
+            ld      c,a
+            ld      a,(caido_y)
+            ld      de,spr_cayendo
+            ld      b,ALTO_SPR
+            call    dibuja_bloque
+            ld      b,20
+ic_dobla:
+            halt
+            call    ay_tick
+            djnz    ic_dobla
+            ld      a,(caido_col)           ; y da con los huesos en el suelo
+            ld      c,a
+            ld      a,(caido_y)
+            ld      b,ALTO_SPR
+            call    borra_jugador
+            ld      a,ANCHO_JUG
+            ld      (ancho_bloque),a
             ld      a,(caido_col)
             ld      c,a
             ld      a,(caido_y)
-            add     a,ALTO_SPR-16           ; el cuerpo queda a sus pies
+            add     a,ALTO_SPR-16
             ld      de,spr_muerto
             ld      b,16
             call    dibuja_bloque
-            ld      b,50                    ; un segundo para que se vea
+            ld      b,30
 ic_ve:
             halt
+            call    ay_tick
             djnz    ic_ve
             ld      a,(b1_act)              ; fuera las balas que quedaran
             or      a
@@ -542,12 +676,21 @@ ic_bala2:
             xor     a
             ld      (b2_act),a
 ic_funeral:
+            call    guarda_decorado         ; con los agujeros de ahora
+            call    cinematica              ; la muerte, en pantalla grande
             call    funeral
+            call    limpia_pantalla
+            call    dibuja_marcador
+            call    hud_puntos
+            call    hud_municion
+            call    restaura_decorado
+            call    dibuja_carreta
             call    coloca_jugadores
             call    dibuja_caracol
             ld      b,25
 ic_pausa:
             halt
+            call    ay_tick
             djnz    ic_pausa
             ret
 
@@ -561,9 +704,10 @@ ic_pausa:
 ;   despues, con los agujeros que ya tuviera.
 ;---------------------------------------------------------------------
 funeral:
-            di                              ; la musica se lleva el reloj
-            call    guarda_decorado
-            call    limpia_campo
+            ld      hl,cancion_funeral
+            call    pon_cancion
+            call    limpia_todo
+            call    dibuja_marcador
             ld      hl,txt_rip
             ld      b,5
             ld      c,8
@@ -575,24 +719,22 @@ funeral:
             ld      de,spr_muerto
             ld      b,16
             call    dibuja_bloque
-            ld      hl,musica_funeral       ; marcha funebre desde el principio
-            ld      (mus_ptr),hl
-            ld      (mus_base),hl
             xor     a
-            ld      (mus_ticks),a
             ld      (esc_x),a
 fun_ida:                                    ; la carreta entra por la izquierda
-            call    musica_tick
+            halt
+            call    ay_tick
             call    dibuja_carreta_esc
             ld      a,(esc_x)
             add     a,ESC_PASO
             ld      (esc_x),a
             cp      ESC_PARADA
             jr      c,fun_ida
-            ld      b,15                    ; se para a cargar
+            ld      b,40                    ; se para a cargar
 fun_carga:
             push    bc
-            call    musica_tick
+            halt
+            call    ay_tick
             pop     bc
             djnz    fun_carga
             ld      a,ANCHO_JUG
@@ -602,7 +744,8 @@ fun_carga:
             ld      b,16
             call    borra_bloque            ; ya va dentro del ataud
 fun_vuelta:                                 ; y se lo lleva
-            call    musica_tick
+            halt
+            call    ay_tick
             call    dibuja_carreta_esc
             call    dibuja_ataud_esc
             ld      a,(esc_x)
@@ -610,12 +753,7 @@ fun_vuelta:                                 ; y se lo lleva
             ld      (esc_x),a
             cp      ESC_FIN
             jr      c,fun_vuelta
-            call    limpia_campo
-            call    restaura_decorado
-            ld      hl,musica               ; deja lista la del menu
-            ld      (mus_base),hl
-            ei
-            ret
+            jp      limpia_todo
 
 dibuja_carreta_esc:
             ld      a,(esc_x)
@@ -763,6 +901,321 @@ baja:
             ret
 
 ;=====================================================================
+; LA MUERTE, EN PANTALLA COMPLETA
+;   Cortes secos como en las del oeste: la bala a camara lenta, el
+;   primer plano del que la recibe, el fogonazo y la caida.
+;=====================================================================
+cinematica:
+            call    limpia_todo
+            call    barras_cine
+            xor     a                       ; --- plano 1: la bala, despacio
+            ld      (esc_x),a
+cine_uno:
+            halt
+            call    ay_tick
+            call    pinta_balazo
+            ld      a,(esc_x)
+            add     a,2
+            ld      (esc_x),a
+            cp      196
+            jr      c,cine_uno
+            call    limpia_todo             ; corte
+            call    barras_cine
+            ld      b,8
+cine_corte:
+            halt
+            call    ay_tick
+            djnz    cine_corte
+            ld      a,CARA_ANCHO            ; --- plano 2: primer plano
+            ld      (ancho_bloque),a
+            ld      a,48
+            ld      c,5
+            ld      de,spr_cara
+            ld      b,48
+            call    dibuja_doble            ; sale a 96x96
+            ld      b,40
+cine_dos:
+            halt
+            call    ay_tick
+            djnz    cine_dos
+            ld      a,104                   ; y la bala, entrando en el plano
+            ld      (esc_x),a
+cine_tres:
+            halt
+            call    ay_tick
+            call    pinta_balazo
+            ld      a,(esc_x)
+            add     a,3
+            ld      (esc_x),a
+            cp      140
+            jr      c,cine_tres
+            call    sonido_impacto
+            ld      b,3                     ; --- fogonazo
+cine_flash:
+            push    bc
+            call    invierte_atributos
+            ld      b,4
+cine_f1:
+            halt
+            call    ay_tick
+            djnz    cine_f1
+            call    invierte_atributos
+            ld      b,4
+cine_f2:
+            halt
+            call    ay_tick
+            djnz    cine_f2
+            pop     bc
+            djnz    cine_flash
+            call    limpia_todo             ; --- plano 3: se desploma
+            call    barras_cine
+            ld      a,ANCHO_JUG
+            ld      (ancho_bloque),a
+            ld      a,40
+            ld      c,10
+            ld      de,spr_cayendo
+            ld      b,ALTO_SPR
+            call    dibuja_doble
+            ld      b,25
+cine_cae:
+            halt
+            call    ay_tick
+            djnz    cine_cae
+            call    limpia_todo
+            call    barras_cine
+            ld      a,ANCHO_JUG
+            ld      (ancho_bloque),a
+            ld      a,104
+            ld      c,10
+            ld      de,spr_muerto
+            ld      b,16
+            call    dibuja_doble
+            ld      b,35
+cine_fin:
+            halt
+            call    ay_tick
+            djnz    cine_fin
+            ret
+
+;---------------------------------------------------------------------
+; pinta_balazo - la bala en primer plano, al pixel
+;---------------------------------------------------------------------
+pinta_balazo:
+            ld      a,(esc_x)
+            ld      (mov_x),a
+            ld      a,96
+            ld      (mov_y),a
+            ld      a,BALAZO_ANCHO
+            ld      (ancho_bloque),a
+            ld      a,BALAZO_ALTO
+            ld      (mov_alto),a
+            ld      hl,BUF_BALAZO
+            ld      de,BALAZO_BYTES
+            jp      dibuja_movil
+
+;---------------------------------------------------------------------
+; limpia_todo - la pantalla entera, marcador incluido
+;---------------------------------------------------------------------
+limpia_todo:
+            ld      hl,SCREEN
+            ld      de,SCREEN+1
+            ld      bc,6144-1
+            ld      (hl),0
+            ldir
+            ret
+
+;---------------------------------------------------------------------
+; barras_cine - las bandas negras de arriba y abajo, formato de cine
+;---------------------------------------------------------------------
+barras_cine:
+            ld      hl,ATTRS
+            ld      de,ATTRS+1
+            ld      bc,768-1
+            ld      (hl),ATTR_JUEGO
+            ldir
+            ld      hl,ATTRS                ; tres filas arriba
+            ld      de,ATTRS+1
+            ld      bc,3*32-1
+            ld      (hl),0
+            ldir
+            ld      hl,ATTRS+21*32          ; y tres abajo
+            ld      de,ATTRS+21*32+1
+            ld      bc,3*32-1
+            ld      (hl),0
+            ldir
+            ret
+
+;---------------------------------------------------------------------
+; invierte_atributos - fogonazo: cambia tinta y papel del centro
+;---------------------------------------------------------------------
+invierte_atributos:
+            ld      hl,ATTRS+3*32
+            ld      b,18*32/8
+inv_grupo:
+            push    bc
+            ld      b,8
+inv_celda:
+            ld      a,(hl)
+            xor     %00110110               ; 0x30 <-> 0x06
+            ld      (hl),a
+            inc     hl
+            djnz    inv_celda
+            pop     bc
+            djnz    inv_grupo
+            ret
+
+;---------------------------------------------------------------------
+; dibuja_doble - vuelca un sprite al doble de tamano
+;   entrada: A = y, C = columna, DE = sprite, B = filas,
+;            (ancho_bloque) = ancho del original en bytes
+;---------------------------------------------------------------------
+dibuja_doble:
+            call    scr_addr
+dd_fila:
+            push    bc
+            push    de
+            push    hl
+            ld      a,(ancho_bloque)
+            ld      b,a
+            ld      hl,dd_buf
+dd_exp:
+            ld      a,(de)
+            inc     de
+            push    bc
+            push    de
+            push    hl
+            call    expande                 ; A -> DE, cada bit repetido
+            pop     hl
+            ld      (hl),d
+            inc     hl
+            ld      (hl),e
+            inc     hl
+            pop     de
+            pop     bc
+            djnz    dd_exp
+            pop     hl
+            call    dd_vuelca               ; la fila va dos veces
+            call    down_hl
+            call    dd_vuelca
+            call    down_hl
+            pop     de
+            ld      a,(ancho_bloque)
+            add     a,e
+            ld      e,a
+            jr      nc,dd_sig
+            inc     d
+dd_sig:
+            pop     bc
+            djnz    dd_fila
+            ret
+
+dd_vuelca:
+            push    hl
+            push    bc
+            ld      a,(ancho_bloque)
+            add     a,a
+            ld      b,a
+            ld      de,dd_buf
+dv_byte:
+            ld      a,(de)
+            ld      (hl),a
+            inc     de
+            inc     l
+            djnz    dv_byte
+            pop     bc
+            pop     hl
+            ret
+
+expande:                                    ; A -> DE con cada bit repetido
+            ld      hl,0
+            ld      b,8
+exp_bit:
+            rla
+            push    af
+            adc     hl,hl
+            pop     af
+            push    af
+            adc     hl,hl
+            pop     af
+            djnz    exp_bit
+            ex      de,hl
+            ret
+
+;=====================================================================
+; EL BANDIDO JUGADO POR LA MAQUINA
+;   Esquiva lo que le viene y, cuando esta despejado, se pone a la
+;   altura del sheriff y dispara con un pellizco de retardo.
+;=====================================================================
+actualiza_ia:
+            ld      hl,b1                   ; ¿le viene alguna bala?
+            ld      b,NUM_BALAS
+ia_bala:
+            push    bc
+            push    hl
+            inc     hl
+            inc     hl
+            ld      a,(hl)
+            or      a
+            jr      z,ia_sig
+            dec     hl
+            ld      a,(hl)                  ; y de la bala
+            ld      hl,p2_y
+            sub     (hl)
+            jr      c,ia_sig                ; le pasa por encima
+            cp      ALTO_SPR
+            jr      nc,ia_sig               ; o por debajo
+            cp      ALTO_SPR/2
+            pop     hl
+            pop     bc
+            jr      c,ia_baja               ; le apunta arriba: agacharse
+            jr      ia_sube
+ia_sig:
+            pop     hl
+            ld      de,3
+            add     hl,de
+            pop     bc
+            djnz    ia_bala
+            ld      a,(p1_y)                ; despejado: apuntar
+            ld      hl,ia_mira              ; cada tiro va a otra altura, asi
+            add     a,(hl)                  ; acaba encontrando el hueco
+            sub     BALA_DY
+            ld      c,a
+            ld      a,(p2_y)
+            cp      c
+            jr      c,ia_sube_ap
+            jr      z,ia_tira
+            jr      ia_sube
+ia_sube_ap:
+            jr      ia_baja
+ia_tira:
+            ld      hl,ia_espera
+            dec     (hl)
+            ret     nz
+            call    azar
+            and     %00001111
+            add     a,12                    ; que no sea infalible
+            ld      (ia_espera),a
+            call    azar
+            and     %00011000               ; 0, 8, 16 o 24
+            ld      (ia_mira),a
+            jp      dispara2
+
+ia_sube:
+            ld      a,(p2_y)
+            ld      c,COL_P2
+            ld      de,spr_ladron
+            call    sube
+            ld      (p2_y),a
+            ret
+ia_baja:
+            ld      a,(p2_y)
+            ld      c,COL_P2
+            ld      de,spr_ladron
+            call    baja
+            ld      (p2_y),a
+            ret
+
+;=====================================================================
 ; RUTINAS GRAFICAS
 ;=====================================================================
 
@@ -879,13 +1332,6 @@ ancho_jugador:
 ; dibuja_escenario - la carreta y los dos cactus del centro
 ;---------------------------------------------------------------------
 dibuja_escenario:
-            ld      a,ANCHO_JUG             ; la carreta tambien mide 24
-            ld      (ancho_bloque),a
-            ld      a,CARRETA_Y
-            ld      c,CARRETA_COL
-            ld      de,spr_carreta
-            ld      b,CARRETA_ALTO
-            call    dibuja_bloque
             ld      a,2                     ; los cactus miden 16
             ld      (ancho_bloque),a
             ld      a,CACTUS1_Y
@@ -1100,30 +1546,134 @@ dm_base:
             jp      dibuja_bloque
 
 ;---------------------------------------------------------------------
-; dibuja_cajas - las dos cajas enteras (las balas ya las iran picando)
+; coloca_barriles - a cada partida les toca otra altura, y nunca a la
+;   misma para que no se tapen el mismo pasillo de tiro
+;---------------------------------------------------------------------
+coloca_barriles:
+            call    azar
+            and     %00000011
+            add     a,a
+            add     a,a
+            add     a,a
+            add     a,a                     ; 0, 16, 32 o 48
+            add     a,MIN_Y+6
+            ld      (barril1_y),a
+            ld      (barril1_tab+1),a
+            ld      c,a
+            call    azar
+            and     %00000001
+            add     a,a
+            add     a,a
+            add     a,a
+            add     a,a
+            add     a,64                    ; al menos 64 pixeles mas abajo
+            add     a,c
+            ld      (barril2_y),a
+            ld      (barril2_tab+1),a
+            ret
+
+;---------------------------------------------------------------------
+; dibuja_cajas - los dos barriles de whisky
 ;---------------------------------------------------------------------
 dibuja_cajas:
-            ld      c,CAJA1_COL
-            call    dibuja_caja
-            ld      c,CAJA2_COL
-dibuja_caja:                                ; C = columna
             ld      a,2
             ld      (ancho_bloque),a
-            ld      a,CAJA_Y
-            ld      (caja_fila),a
-            ld      b,4                     ; cuatro tramos iguales
-dcaja_bucle:
-            push    bc
-            ld      a,(caja_fila)
-            ld      de,spr_caja
-            ld      b,8
+            ld      a,(barril1_y)
+            ld      c,CAJA1_COL
+            ld      de,spr_barril
+            ld      b,CAJA_ALTO
             call    dibuja_bloque
-            ld      a,(caja_fila)
-            add     a,8
-            ld      (caja_fila),a
-            pop     bc
-            djnz    dcaja_bucle
+            ld      a,(barril2_y)
+            ld      c,CAJA2_COL
+            ld      de,spr_barril
+            ld      b,CAJA_ALTO
+            jp      dibuja_bloque
+
+;---------------------------------------------------------------------
+; actualiza_carreta - asoma por abajo, sube por el centro y se pierde
+;   por arriba; luego espera un rato y vuelve a asomar
+;---------------------------------------------------------------------
+actualiza_carreta:
+            ld      a,(carreta_t)
+            inc     a
+            cp      CARRETA_LENTO
+            jr      nc,acar_mueve
+            ld      (carreta_t),a
             ret
+acar_mueve:
+            xor     a
+            ld      (carreta_t),a
+            ld      a,(carreta_y)
+            or      a
+            jr      nz,acar_sube
+            ld      hl,carreta_espera       ; esta fuera, esperando turno
+            dec     (hl)
+            ret     nz
+            ld      a,CARRETA_ABAJO
+            ld      (carreta_y),a
+            ret
+acar_sube:
+            dec     a
+            ld      (carreta_y),a
+            or      a
+            jr      z,acar_fuera
+            call    dibuja_carreta
+            ld      a,(carreta_y)           ; borra la fila que deja libre
+            add     a,CARRETA_ALTO
+            cp      192
+            ret     nc
+            ld      c,CARRETA_COL
+            ld      b,1
+            ld      a,ANCHO_JUG
+            ld      (ancho_bloque),a
+            ld      a,(carreta_y)
+            add     a,CARRETA_ALTO
+            jp      borra_bloque
+acar_fuera:
+            ld      a,ANCHO_JUG             ; se fue: limpia lo que quede
+            ld      (ancho_bloque),a
+            ld      a,MIN_Y
+            ld      c,CARRETA_COL
+            ld      b,CARRETA_ALTO
+            call    borra_bloque
+            ld      a,80
+            ld      (carreta_espera),a
+            ret
+
+;---------------------------------------------------------------------
+; dibuja_carreta - con recorte por arriba, para que se meta bajo el
+;   marcador en vez de pisarlo
+;---------------------------------------------------------------------
+dibuja_carreta:
+            ld      a,ANCHO_JUG
+            ld      (ancho_bloque),a
+            ld      de,spr_carreta
+            ld      b,CARRETA_ALTO
+            ld      a,(carreta_y)
+            cp      MIN_Y
+            jr      nc,dcar_entera
+            ld      c,a                     ; le faltan (MIN_Y - y) filas
+            ld      a,MIN_Y
+            sub     c
+            ld      c,a
+            ld      a,CARRETA_ALTO
+            sub     c
+            ret     c                       ; ya no se ve nada
+            ret     z
+            ld      b,a                     ; filas que quedan
+            push    bc
+            ld      hl,3
+dcar_salta:
+            ex      de,hl
+            add     hl,de
+            ex      de,hl
+            dec     c
+            jr      nz,dcar_salta
+            pop     bc
+            ld      a,MIN_Y
+dcar_entera:
+            ld      c,CARRETA_COL
+            jp      dibuja_bloque
 
 ;---------------------------------------------------------------------
 ; mira_bala - ¿hay algo dibujado donde va a caer la bala?
@@ -1319,8 +1869,61 @@ dibuja_marcador:
             ld      b,0
             ld      c,13
             call    print_str
-            ld      a,13                    ; linea horizontal bajo el marcador
+            ld      a,16                    ; linea horizontal bajo el marcador
             jp      linea_horizontal
+
+;---------------------------------------------------------------------
+; hud_municion - las balas que le quedan a cada uno, dibujadas
+;---------------------------------------------------------------------
+hud_municion:
+            ld      a,8                     ; se limpia la fila entera
+            ld      c,0
+            call    scr_addr
+            ld      b,8
+hm_limpia:
+            push    bc
+            push    hl
+            ld      b,32
+hm_col:
+            ld      (hl),0
+            inc     l
+            djnz    hm_col
+            pop     hl
+            call    down_hl
+            pop     bc
+            djnz    hm_limpia
+            ld      a,1
+            ld      (ancho_bloque),a
+            ld      a,(balas1)
+            or      a
+            jr      z,hm_otro
+            ld      b,a
+            ld      c,0
+hm_uno:
+            push    bc
+            ld      a,8
+            ld      de,spr_balita
+            ld      b,8
+            call    dibuja_bloque
+            pop     bc
+            inc     c
+            djnz    hm_uno
+hm_otro:
+            ld      a,(balas2)
+            or      a
+            ret     z
+            ld      b,a
+            ld      c,32
+hm_dos:
+            dec     c
+            push    bc
+            ld      a,8
+            ld      de,spr_balita
+            ld      b,8
+            call    dibuja_bloque
+            pop     bc
+            djnz    hm_dos
+            ret
 
 ;---------------------------------------------------------------------
 ; linea_horizontal - linea de 256 pixeles de ancho
@@ -1384,49 +1987,57 @@ menu:
             call    bala_xor
             ; opciones
             ld      hl,txt_op1
-            ld      b,13
-            ld      c,12
+            ld      b,12
+            ld      c,10
             call    print_str
             ld      hl,txt_op2
-            ld      b,15
-            ld      c,12
+            ld      b,14
+            ld      c,10
+            call    print_str
+            ld      hl,txt_op3
+            ld      b,16
+            ld      c,10
             call    print_str
             ld      hl,txt_pulsa
             ld      b,19
-            ld      c,10
+            ld      c,9
             call    print_str
             ld      hl,txt_autor
             ld      b,21
-            ld      c,8
+            ld      c,3
             call    print_str
             ; el aviso parpadea con el bit FLASH de los atributos
-            ld      hl,ATTRS+(19*32)+10
-            ld      b,11
+            ld      hl,ATTRS+(19*32)+9
+            ld      b,14
 menu_flash:
             ld      (hl),0x80+ATTR_JUEGO
             inc     hl
             djnz    menu_flash
             call    espera_libre
-            di                              ; la melodia necesita el reloj entero
-            ld      hl,musica
-            ld      (mus_ptr),hl
-            ld      (mus_base),hl
-            xor     a
-            ld      (mus_ticks),a
+            ld      hl,cancion_menu
+            call    pon_cancion
 menu_espera:
-            call    musica_tick             ; 60 ms de musica por vuelta
+            halt
+            call    ay_tick
             ld      bc,0xF7FE               ; fila 1 2 3 4 5
             in      a,(c)
             ld      b,a
-            and     %00000001               ; tecla 1 = jugar
-            jr      nz,menu_otra
-            ei
+            and     %00000001               ; 1 = contra la maquina
+            jr      nz,menu_dos
+            ld      a,1
+            ld      (modo_ia),a
             ret
-menu_otra:
+menu_dos:
             ld      a,b
-            and     %00000010               ; tecla 2 = controles
+            and     %00000010               ; 2 = dos jugadores
+            jr      nz,menu_tres
+            xor     a
+            ld      (modo_ia),a
+            ret
+menu_tres:
+            ld      a,b
+            and     %00000100               ; 3 = controles
             jr      nz,menu_espera
-            ei
             call    pantalla_controles
             jp      menu                    ; el menu queda fuera del alcance de JR
 
@@ -1594,99 +2205,235 @@ espera_libre:
             ret
 
 ;=====================================================================
-; SONIDO
+; MUSICA Y SONIDO POR EL AY
+;   El 128K lleva un AY-3-8912 de tres canales.  El reproductor se llama
+;   una vez por fotograma y no bloquea nada, asi que la musica suena
+;   mientras se juega.  Los canales A y B llevan melodia y bajo, y el C
+;   los acordes o, si hay disparo o impacto, el ruido del efecto.
 ;=====================================================================
-;   entrada: B = numero de ciclos, C = periodo
-sonido:
-snd_ciclo:
-            ld      a,%00010110             ; altavoz ON + borde amarillo
-            out     (0xFE),a
-            ld      a,c
-snd_d1:
-            dec     a
-            jr      nz,snd_d1
-            ld      a,%00000110             ; altavoz OFF + borde amarillo
-            out     (0xFE),a
-            ld      a,c
-snd_d2:
-            dec     a
-            jr      nz,snd_d2
-            djnz    snd_ciclo
+AY_SEL      EQU 0xFFFD
+AY_DAT      EQU 0xBFFD
+
+;---------------------------------------------------------------------
+; ay_reg - escribe el registro A con el valor E
+;---------------------------------------------------------------------
+ay_reg:
+            push    bc
+            ld      bc,AY_SEL
+            out     (c),a
+            ld      bc,AY_DAT
+            out     (c),e
+            pop     bc
             ret
 
-sonido_tiro:
-            ld      b,14
-            ld      c,40
-            jp      sonido
-
-sonido_rotura:
-            ld      b,18
-            ld      c,60
-            call    sonido
-            ld      b,12
-            ld      c,150
-            jp      sonido
-
-sonido_rebote:
-            ld      b,10
-            ld      c,18
-            jp      sonido
-
-sonido_impacto:
-            ld      b,25
-            ld      c,110
-            call    sonido
-            ld      b,30
-            ld      c,190
-            jp      sonido
-
-;=====================================================================
-; MUSICA DEL MENU
-;=====================================================================
 ;---------------------------------------------------------------------
-; musica_tick - suena 60 ms de la melodia y vuelve, para que el menu
-;   pueda mirar el teclado entre tick y tick
+; ay_init - los tres canales en tono y a volumen cero
 ;---------------------------------------------------------------------
-musica_tick:
-            ld      a,(mus_ticks)
-            or      a
-            jr      nz,mt_suena
-            ld      hl,(mus_ptr)            ; toca nota nueva
-            ld      a,(hl)
-            cp      0xFF
-            jr      nz,mt_nota
-            ld      hl,(mus_base)           ; se acabo: vuelta a empezar
-            ld      a,(hl)
-mt_nota:
-            ld      (mus_per),a
+ay_init:
+            ld      a,7
+            ld      e,%00111000             ; tono en A, B y C; sin ruido
+            call    ay_reg
+            ld      b,3
+            ld      c,8
+ai_vol:
+            ld      a,c
+            ld      e,0
+            push    bc
+            call    ay_reg
+            pop     bc
+            inc     c
+            djnz    ai_vol
+            xor     a
+            ld      (fx_t),a
+            ret
+
+;---------------------------------------------------------------------
+; pon_cancion - HL = tabla con los punteros de los tres canales
+;---------------------------------------------------------------------
+pon_cancion:
+            ld      (pc_tabla),hl
+            ld      hl,ay_est_a
+            ld      b,3
+pc_canal:
+            push    bc
+            push    hl
+            ld      hl,(pc_tabla)
+            ld      e,(hl)
             inc     hl
-            ld      a,(hl)
-            ld      (mus_cic),a
+            ld      d,(hl)
             inc     hl
-            ld      a,(hl)
-            ld      (mus_ticks),a
+            ld      (pc_tabla),hl
+            pop     hl
+            ld      (hl),e                  ; por donde va
             inc     hl
-            ld      (mus_ptr),hl
-mt_suena:
-            ld      a,(mus_ticks)
+            ld      (hl),d
+            inc     hl
+            ld      (hl),e                  ; y por donde empezaba
+            inc     hl
+            ld      (hl),d
+            inc     hl
+            ld      (hl),1                  ; nota nueva ya
+            inc     hl
+            ld      (hl),0                  ; volumen
+            inc     hl
+            pop     bc
+            djnz    pc_canal
+            ret
+
+;---------------------------------------------------------------------
+; ay_tick - un fotograma de musica
+;---------------------------------------------------------------------
+ay_tick:
+            ld      a,(ay_par)
+            xor     1
+            ld      (ay_par),a
+            ld      hl,ay_est_a
+            xor     a
+            call    ay_canal
+            ld      hl,ay_est_b
+            ld      a,1
+            call    ay_canal
+            ld      a,(fx_t)                ; el canal C lo puede ocupar
+            or      a                       ; un disparo o un impacto
+            jp      nz,fx_tick
+            ld      hl,ay_est_c
+            ld      a,2
+            ; cae en ay_canal
+
+;---------------------------------------------------------------------
+; ay_canal - HL = estado del canal, A = numero de canal
+;---------------------------------------------------------------------
+ay_canal:
+            ld      (ay_num),a
+            ld      (ay_est),hl
+            ld      de,4
+            add     hl,de
+            ld      a,(hl)
             dec     a
-            ld      (mus_ticks),a
-            ld      a,(mus_per)
-            or      a
-            jr      z,mt_silencio
+            ld      (hl),a
+            jr      nz,ay_vol
+            ld      hl,(ay_est)             ; toca nota nueva
+            ld      e,(hl)
+            inc     hl
+            ld      d,(hl)
+            ld      a,(de)
+            inc     de
             ld      c,a
-            ld      a,(mus_cic)
+            ld      a,(de)
+            inc     de
+            ld      b,a                     ; BC = periodo
+            ld      a,b
+            and     c
+            inc     a
+            jr      nz,ay_pon
+            ld      hl,(ay_est)             ; se acabo: vuelta al principio
+            inc     hl
+            inc     hl
+            ld      e,(hl)
+            inc     hl
+            ld      d,(hl)
+            ld      a,(de)
+            inc     de
+            ld      c,a
+            ld      a,(de)
+            inc     de
             ld      b,a
-            jp      sonido                  ; B ciclos con periodo C
-mt_silencio:
-            ld      b,60                    ; misma duracion, sin altavoz
-mt_pausa1:
-            ld      a,219
-mt_pausa2:
+ay_pon:
+            ld      a,(de)                  ; duracion
+            inc     de
+            ld      hl,(ay_est)
+            ld      (hl),e
+            inc     hl
+            ld      (hl),d
+            inc     hl
+            inc     hl
+            inc     hl
+            ld      (hl),a
+            inc     hl
+            ld      a,b
+            or      c
+            ld      a,15
+            jr      nz,ay_vol_ini
+            xor     a                       ; silencio
+ay_vol_ini:
+            ld      (hl),a
+            ld      a,(ay_num)              ; el periodo, a sus dos registros
+            add     a,a
+            ld      e,c
+            call    ay_reg
+            ld      a,(ay_num)
+            add     a,a
+            inc     a
+            ld      e,b
+            call    ay_reg
+ay_vol:
+            ld      hl,(ay_est)
+            ld      de,5
+            add     hl,de
+            ld      a,(ay_par)              ; el volumen decae, para que las
+            or      a                       ; notas suenen pulsadas
+            jr      nz,ay_pon_vol
+            ld      a,(hl)
+            or      a
+            jr      z,ay_pon_vol
             dec     a
-            jr      nz,mt_pausa2
-            djnz    mt_pausa1
-            ret
+            ld      (hl),a
+ay_pon_vol:
+            ld      e,(hl)
+            ld      a,(ay_num)
+            add     a,8
+            jp      ay_reg
+
+;---------------------------------------------------------------------
+; efectos - ocupan el canal C con ruido mientras duran
+;---------------------------------------------------------------------
+sonido_tiro:
+            ld      e,3                     ; chasquido corto
+            ld      c,8
+            jr      fx_ruido
+sonido_rebote:
+            ld      e,8
+            ld      c,6
+            jr      fx_ruido
+sonido_rotura:
+            ld      e,12
+            ld      c,10
+            jr      fx_ruido
+sonido_impacto:
+            ld      e,24                    ; ruido grave y largo
+            ld      c,30
+fx_ruido:
+            ld      a,6                     ; periodo del ruido
+            call    ay_reg
+            ld      a,c
+            ld      (fx_t),a
+            ld      a,15
+            ld      (fx_vol),a
+            ld      a,7                     ; ruido en C, tono en A y B
+            ld      e,%00011100
+            jp      ay_reg
+
+fx_tick:
+            ld      hl,fx_t
+            dec     (hl)
+            jr      nz,fx_sigue
+            ld      a,7                     ; se acabo: vuelve el tono
+            ld      e,%00111000
+            call    ay_reg
+            ld      e,0
+            ld      a,10
+            jp      ay_reg
+fx_sigue:
+            ld      hl,fx_vol
+            ld      a,(hl)
+            or      a
+            jr      z,fx_pon_vol
+            dec     a
+            ld      (hl),a
+fx_pon_vol:
+            ld      e,a
+            ld      a,10
+            jp      ay_reg
 
 ;=====================================================================
 ; DATOS
@@ -1824,6 +2571,110 @@ spr_carreta:             ; carreta, 24x28
             DEFB    %00000111, %10000001, %11100000   ; .....####......####.....
             DEFB    %00000000, %00000000, %00000000   ; ........................
 
+spr_cayendo:             ; el pistolero doblandose, 24x32
+            DEFB    %00000000, %00000000, %00000000   ; ........................
+            DEFB    %00000000, %00000000, %00000000   ; ........................
+            DEFB    %00000000, %00111111, %11000000   ; ..........########......
+            DEFB    %00000000, %01111111, %11100000   ; .........##########.....
+            DEFB    %00000000, %11111111, %11110000   ; ........############....
+            DEFB    %00000000, %00111111, %00000000   ; ..........######........
+            DEFB    %00000000, %00100100, %00000000   ; ..........#..#..........
+            DEFB    %00000000, %01111111, %10000000   ; .........########.......
+            DEFB    %00000000, %11111111, %11000000   ; ........##########......
+            DEFB    %00000001, %11111111, %11100000   ; .......############.....
+            DEFB    %00000011, %11111111, %11110000   ; ......##############....
+            DEFB    %00000111, %11111111, %11111000   ; .....################...
+            DEFB    %00001111, %11111100, %00000000   ; ....##########..........
+            DEFB    %00011111, %11110000, %00000000   ; ...#########............
+            DEFB    %00011111, %11100000, %00000000   ; ...########.............
+            DEFB    %00011111, %11100000, %00000000   ; ...########.............
+            DEFB    %00011111, %11110000, %00000000   ; ...#########............
+            DEFB    %00011111, %11111000, %00000000   ; ...##########...........
+            DEFB    %00011111, %11111100, %00000000   ; ...###########..........
+            DEFB    %00001111, %11111100, %00000000   ; ....##########..........
+            DEFB    %00001111, %11111000, %00000000   ; ....#########...........
+            DEFB    %00001111, %10111100, %00000000   ; ....#####.####..........
+            DEFB    %00011111, %00011110, %00000000   ; ...#####...####.........
+            DEFB    %00011110, %00001111, %00000000   ; ...####.....####........
+            DEFB    %00111100, %00000111, %10000000   ; ..####.......####.......
+            DEFB    %00111100, %00000011, %11000000   ; ..####........####......
+            DEFB    %01111000, %00000011, %11000000   ; .####.........####......
+            DEFB    %01111000, %00000001, %11100000   ; .####..........####.....
+            DEFB    %11110000, %00000001, %11100000   ; ####...........####.....
+            DEFB    %11110000, %00000000, %11110000   ; ####............####....
+            DEFB    %11100000, %00000000, %11111000   ; ###.............#####...
+            DEFB    %11000000, %00000000, %01111000   ; ##...............####...
+
+spr_balazo_m:            ; la bala en primer plano con margenes, 40x8
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000   ; ........................................
+            DEFB    %00000000, %00100011, %11101111, %11111111, %00000000   ; ..........#...#####.############........
+            DEFB    %00000000, %01001111, %11111110, %11111111, %00000000   ; .........#..###########.########........
+            DEFB    %00000000, %10011111, %11111111, %11111111, %00000000   ; ........#..#####################........
+            DEFB    %00000000, %10011111, %11111111, %11111111, %00000000   ; ........#..#####################........
+            DEFB    %00000000, %01001111, %11111110, %11111111, %00000000   ; .........#..###########.########........
+            DEFB    %00000000, %00100011, %11101111, %11111111, %00000000   ; ..........#...#####.############........
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000   ; ........................................
+
+spr_cara:                ; primer plano, 48x48
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ................................................
+            DEFB    %00000000, %01111111, %11111111, %11111111, %10000000, %00000000   ; .........########################...............
+            DEFB    %00000011, %11111111, %11111111, %11111111, %11110000, %00000000   ; ......##############################............
+            DEFB    %00001111, %11111111, %11111111, %11111111, %11111100, %00000000   ; ....##################################..........
+            DEFB    %00011111, %11111111, %11111111, %11111111, %11111110, %00000000   ; ...####################################.........
+            DEFB    %00111111, %11111111, %11111111, %11111111, %11111111, %00000000   ; ..######################################........
+            DEFB    %01111111, %11111111, %11111111, %11111111, %11111111, %10000000   ; .########################################.......
+            DEFB    %11111111, %11111111, %11111111, %11111111, %11111111, %11000000   ; ##########################################......
+            DEFB    %11111111, %11111111, %11111111, %11111111, %11111111, %11100000   ; ###########################################.....
+            DEFB    %11111111, %11111111, %11111111, %11111111, %11111111, %11110000   ; ############################################....
+            DEFB    %11111111, %11111111, %11111111, %11111111, %11111111, %11111000   ; #############################################...
+            DEFB    %00111111, %11111111, %11111111, %11111111, %11111111, %11111000   ; ..###########################################...
+            DEFB    %00001111, %11111111, %11111111, %11111111, %11111111, %11110000   ; ....########################################....
+            DEFB    %00000011, %11111111, %11111111, %11111111, %11111111, %10000000   ; ......###################################.......
+            DEFB    %00000000, %01111111, %11111111, %11111111, %11111000, %00000000   ; .........############################...........
+            DEFB    %00000000, %00011111, %11111111, %11111111, %11100000, %00000000   ; ...........########################.............
+            DEFB    %00000000, %00111111, %11111111, %11111111, %11110000, %00000000   ; ..........##########################............
+            DEFB    %00000000, %01111111, %11111111, %11111111, %11111000, %00000000   ; .........############################...........
+            DEFB    %00000000, %11111111, %11111111, %11111111, %11111100, %00000000   ; ........##############################..........
+            DEFB    %00000000, %11110000, %00000000, %00000000, %11110000, %00000000   ; ........####....................####............
+            DEFB    %00000000, %11100000, %00000000, %00000000, %01110000, %00000000   ; ........###......................###............
+            DEFB    %00000000, %11000111, %10000000, %00011110, %00110000, %00000000   ; ........##...####..........####...##............
+            DEFB    %00000000, %11001111, %11000000, %00111111, %00110000, %00000000   ; ........##..######........######..##............
+            DEFB    %00000000, %11001100, %11000000, %00110011, %00110000, %00000000   ; ........##..##..##........##..##..##............
+            DEFB    %00000000, %11001111, %11000000, %00111111, %00110000, %00000000   ; ........##..######........######..##............
+            DEFB    %00000000, %11000111, %10000000, %00011110, %00110000, %00000000   ; ........##...####..........####...##............
+            DEFB    %00000000, %11000000, %00000000, %00000000, %00110000, %00000000   ; ........##........................##............
+            DEFB    %00000000, %11000000, %00000110, %00000000, %00110000, %00000000   ; ........##...........##...........##............
+            DEFB    %00000000, %11000000, %00001111, %00000000, %00110000, %00000000   ; ........##..........####..........##............
+            DEFB    %00000000, %11000000, %00011111, %10000000, %00110000, %00000000   ; ........##.........######.........##............
+            DEFB    %00000000, %11000000, %00011111, %10000000, %00110000, %00000000   ; ........##.........######.........##............
+            DEFB    %00000000, %11000000, %00001111, %00000000, %00110000, %00000000   ; ........##..........####..........##............
+            DEFB    %00000000, %11100000, %00000000, %00000000, %00110000, %00000000   ; ........###.......................##............
+            DEFB    %00000000, %11110000, %00000000, %00000000, %01110000, %00000000   ; ........####.....................###............
+            DEFB    %00000000, %11111000, %00000000, %00000000, %11110000, %00000000   ; ........#####...................####............
+            DEFB    %00000000, %01111000, %00000000, %00000000, %11110000, %00000000   ; .........####...................####............
+            DEFB    %00000000, %01111001, %11111111, %11111111, %00111000, %00000000   ; .........####..#################..###...........
+            DEFB    %00000000, %01111001, %10000000, %00001100, %11111000, %00000000   ; .........####..##...........##..#####...........
+            DEFB    %00000000, %01111100, %11111111, %11111001, %11111000, %00000000   ; .........#####..#############..######...........
+            DEFB    %00000000, %00111110, %00000000, %00000011, %11111000, %00000000   ; ..........#####...............#######...........
+            DEFB    %00000000, %00111111, %00000000, %00000111, %11111000, %00000000   ; ..........######.............########...........
+            DEFB    %00000000, %00111111, %10000000, %00001111, %11111000, %00000000   ; ..........#######...........#########...........
+            DEFB    %00000000, %00011111, %11111111, %11111111, %11111100, %00000000   ; ...........###########################..........
+            DEFB    %00000000, %00011111, %11111111, %11111111, %11111000, %00000000   ; ...........##########################...........
+            DEFB    %00000000, %00001111, %11111111, %11111111, %11110000, %00000000   ; ............########################............
+            DEFB    %00000000, %00000011, %11111111, %11111111, %11000000, %00000000   ; ..............####################..............
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ................................................
+            DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ................................................
+
+spr_balazo:              ; la bala en primer plano, 24x8
+            DEFB    %00000000, %00000000, %00000000   ; ........................
+            DEFB    %00100011, %11101111, %11111111   ; ..#...#####.############
+            DEFB    %01001111, %11111110, %11111111   ; .#..###########.########
+            DEFB    %10011111, %11111111, %11111111   ; #..#####################
+            DEFB    %10011111, %11111111, %11111111   ; #..#####################
+            DEFB    %01001111, %11111110, %11111111   ; .#..###########.########
+            DEFB    %00100011, %11101111, %11111111   ; ..#...#####.############
+            DEFB    %00000000, %00000000, %00000000   ; ........................
+
 ; ---- letras del logotipo (16x14 pixeles) ----------------------------
 logo_letras:
             DEFW    logo_b, logo_a, logo_l, logo_a, logo_v, logo_a
@@ -1896,10 +2747,11 @@ logo_v:                                 ; letra V del logotipo
 txt_poli:        DEFB "SHERIFF:",0
 txt_ladron:      DEFB "BANDIDO:",0
 txt_juego:       DEFB "BALAVA",0
-txt_op1:         DEFB "1  JUGAR",0
-txt_op2:         DEFB "2  CONTROLES",0
-txt_pulsa:       DEFB "PULSA 1 O 2",0
-txt_autor:       DEFB "(C) 2026  AMDLABS",0
+txt_op1:         DEFB "1  UN JUGADOR",0
+txt_op2:         DEFB "2  DOS JUGADORES",0
+txt_op3:         DEFB "3  CONTROLES",0
+txt_pulsa:       DEFB "PULSA 1, 2 O 3",0
+txt_autor:       DEFB "(C) 2026 ALEJANDRO MARTINEZ",0
 txt_controles:   DEFB "CONTROLES",0
 txt_j1:          DEFB "JUGADOR 1 - SHERIFF",0
 txt_j1b:         DEFB "Q=ARRIBA  A=ABAJO",0
@@ -1913,6 +2765,7 @@ txt_rip:         DEFB "DESCANSE EN PAZ",0
 txt_gana_poli:   DEFB "GANA EL SHERIFF",0
 txt_gana_ladron: DEFB "GANA EL BANDIDO",0
 txt_final:       DEFB "RESULTADO",0
+txt_empate:      DEFB "SIN BALAS: EMPATE",0
 
 spr_caracol_d:           ; caracol a la derecha, 48x26 (margen a los cuatro lados)
             DEFB    %00000000, %00000000, %00000000, %00000000, %00000000, %00000000   ; ................................................
@@ -2036,101 +2889,438 @@ spr_ataud_m:             ; ataud con margenes, 40x16
             DEFB    %00000000, %00000000, %00000000, %00000000, %00000000   ; ........................................
             DEFB    %00000000, %00000000, %00000000, %00000000, %00000000   ; ........................................
 
-spr_caja:                ; un tramo de caja, 16x8 (la caja son cuatro)
+spr_barril:              ; barril de whisky, 16x32
+            DEFB    %00011111, %11111000   ; ...##########...
+            DEFB    %00111111, %11111100   ; ..############..
+            DEFB    %01111111, %11111110   ; .##############.
             DEFB    %11111111, %11111111   ; ################
-            DEFB    %11000000, %00000011   ; ##............##
-            DEFB    %11011111, %11111011   ; ##.##########.##
-            DEFB    %11011111, %11111011   ; ##.##########.##
-            DEFB    %11011111, %11111011   ; ##.##########.##
-            DEFB    %11011111, %11111011   ; ##.##########.##
-            DEFB    %11000000, %00000011   ; ##............##
             DEFB    %11111111, %11111111   ; ################
+            DEFB    %01101101, %10110110   ; .##.##.##.##.##.
+            DEFB    %01101101, %10110110   ; .##.##.##.##.##.
+            DEFB    %11011011, %01101101   ; ##.##.##.##.##.#
+            DEFB    %11011011, %01101101   ; ##.##.##.##.##.#
+            DEFB    %11111111, %11111111   ; ################
+            DEFB    %11111111, %11111111   ; ################
+            DEFB    %11011011, %01101101   ; ##.##.##.##.##.#
+            DEFB    %11011011, %01101101   ; ##.##.##.##.##.#
+            DEFB    %11011011, %01101101   ; ##.##.##.##.##.#
+            DEFB    %11011011, %01101101   ; ##.##.##.##.##.#
+            DEFB    %11011011, %01101101   ; ##.##.##.##.##.#
+            DEFB    %11011011, %01101101   ; ##.##.##.##.##.#
+            DEFB    %11111111, %11111111   ; ################
+            DEFB    %11111111, %11111111   ; ################
+            DEFB    %11011011, %01101101   ; ##.##.##.##.##.#
+            DEFB    %11011011, %01101101   ; ##.##.##.##.##.#
+            DEFB    %11011011, %01101101   ; ##.##.##.##.##.#
+            DEFB    %11011011, %01101101   ; ##.##.##.##.##.#
+            DEFB    %11011011, %01101101   ; ##.##.##.##.##.#
+            DEFB    %11011011, %01101101   ; ##.##.##.##.##.#
+            DEFB    %11111111, %11111111   ; ################
+            DEFB    %11111111, %11111111   ; ################
+            DEFB    %01101101, %10110110   ; .##.##.##.##.##.
+            DEFB    %01111111, %11111110   ; .##############.
+            DEFB    %01111111, %11111110   ; .##############.
+            DEFB    %00111111, %11111100   ; ..############..
+            DEFB    %00011111, %11111000   ; ...##########...
 
+spr_balita:              ; una bala del contador, 8x8
+            DEFB    %00000000   ; ........
+            DEFB    %00111100   ; ..####..
+            DEFB    %01111110   ; .######.
+            DEFB    %01111110   ; .######.
+            DEFB    %01111110   ; .######.
+            DEFB    %01111110   ; .######.
+            DEFB    %00111100   ; ..####..
+            DEFB    %00000000   ; ........
 ;---------------------------------------------------------------------
-; melodia del menu: Oh! Susanna (Stephen Foster, 1848, dominio publico)
-; cada nota son tres bytes: periodo, ciclos por tick y numero de ticks
-; (periodo 0 = silencio, 0xFF cierra la melodia y vuelve a empezar)
+; canciones para el AY: tres canales, periodo (dos bytes) y duracion
+; en fotogramas por nota; 0xFFFF cierra el canal y vuelve a empezar
 ;---------------------------------------------------------------------
-musica:
-            DEFB    207, 31, 2  ; C5 (523 Hz -> 524 Hz)
-            DEFB    184, 35, 2  ; D5 (587 Hz -> 588 Hz)
-            DEFB    164, 40, 4  ; E5 (659 Hz -> 659 Hz)
-            DEFB    138, 47, 4  ; G5 (784 Hz -> 782 Hz)
-            DEFB    138, 47, 2  ; G5 (784 Hz -> 782 Hz)
-            DEFB    122, 53, 2  ; A5 (880 Hz -> 883 Hz)
-            DEFB    138, 47, 4  ; G5 (784 Hz -> 782 Hz)
-            DEFB    164, 40, 2  ; E5 (659 Hz -> 659 Hz)
-            DEFB    207, 31, 2  ; C5 (523 Hz -> 524 Hz)
-            DEFB    184, 35, 4  ; D5 (587 Hz -> 588 Hz)
-            DEFB    164, 40, 4  ; E5 (659 Hz -> 659 Hz)
-            DEFB    164, 40, 2  ; E5 (659 Hz -> 659 Hz)
-            DEFB    184, 35, 2  ; D5 (587 Hz -> 588 Hz)
-            DEFB    207, 31, 6  ; C5 (523 Hz -> 524 Hz)
-            DEFB    0, 0, 2          ; silencio
-            DEFB    207, 31, 2  ; C5 (523 Hz -> 524 Hz)
-            DEFB    184, 35, 2  ; D5 (587 Hz -> 588 Hz)
-            DEFB    164, 40, 4  ; E5 (659 Hz -> 659 Hz)
-            DEFB    138, 47, 4  ; G5 (784 Hz -> 782 Hz)
-            DEFB    138, 47, 2  ; G5 (784 Hz -> 782 Hz)
-            DEFB    122, 53, 2  ; A5 (880 Hz -> 883 Hz)
-            DEFB    138, 47, 4  ; G5 (784 Hz -> 782 Hz)
-            DEFB    164, 40, 2  ; E5 (659 Hz -> 659 Hz)
-            DEFB    207, 31, 2  ; C5 (523 Hz -> 524 Hz)
-            DEFB    184, 35, 4  ; D5 (587 Hz -> 588 Hz)
-            DEFB    164, 40, 4  ; E5 (659 Hz -> 659 Hz)
-            DEFB    184, 35, 4  ; D5 (587 Hz -> 588 Hz)
-            DEFB    207, 31, 8  ; C5 (523 Hz -> 524 Hz)
-            DEFB    0, 0, 3          ; silencio
-            DEFB    155, 42, 4  ; F5 (698 Hz -> 697 Hz)
-            DEFB    155, 42, 4  ; F5 (698 Hz -> 697 Hz)
-            DEFB    122, 53, 4  ; A5 (880 Hz -> 883 Hz)
-            DEFB    122, 53, 4  ; A5 (880 Hz -> 883 Hz)
-            DEFB    122, 53, 2  ; A5 (880 Hz -> 883 Hz)
-            DEFB    138, 47, 2  ; G5 (784 Hz -> 782 Hz)
-            DEFB    164, 40, 4  ; E5 (659 Hz -> 659 Hz)
-            DEFB    207, 31, 4  ; C5 (523 Hz -> 524 Hz)
-            DEFB    184, 35, 4  ; D5 (587 Hz -> 588 Hz)
-            DEFB    164, 40, 4  ; E5 (659 Hz -> 659 Hz)
-            DEFB    184, 35, 2  ; D5 (587 Hz -> 588 Hz)
-            DEFB    207, 31, 2  ; C5 (523 Hz -> 524 Hz)
-            DEFB    184, 35, 8  ; D5 (587 Hz -> 588 Hz)
-            DEFB    0, 0, 4          ; silencio
-            DEFB    0xFF
+cancion_menu:
+            DEFW    menu_a, menu_b, menu_c
+cancion_funeral:
+            DEFW    fune_a, fune_b, fune_c
 
-;---------------------------------------------------------------------
-; marcha funebre: Chopin, Sonata nº2 (1839, dominio publico), subida
-; una octava porque el bucle de retardo no da notas mas graves
-;---------------------------------------------------------------------
-musica_funeral:
-            DEFB    115, 56, 6  ; Bb (936 Hz)
-            DEFB    115, 56, 2  ; Bb (936 Hz)
-            DEFB    115, 56, 4  ; Bb (936 Hz)
-            DEFB    115, 56, 4  ; Bb (936 Hz)
-            DEFB    97, 67, 6   ; Db (1106 Hz)
-            DEFB    103, 63, 2  ; C (1043 Hz)
-            DEFB    103, 63, 4  ; C (1043 Hz)
-            DEFB    115, 56, 4  ; Bb (936 Hz)
-            DEFB    115, 56, 6  ; Bb (936 Hz)
-            DEFB    130, 50, 2  ; Ab (829 Hz)
-            DEFB    130, 50, 4  ; Ab (829 Hz)
-            DEFB    146, 44, 4  ; Gb (740 Hz)
-            DEFB    146, 44, 6  ; Gb (740 Hz)
-            DEFB    155, 42, 2  ; F (697 Hz)
-            DEFB    155, 42, 4  ; F (697 Hz)
-            DEFB    115, 56, 8  ; Bb (936 Hz)
-            DEFB    0, 0, 4            ; silencio
-            DEFB    0xFF
+menu_a:              ; Oh! Susanna: la melodia
+            DEFW      212
+            DEFB    12                  ; C5
+            DEFW      189
+            DEFB    12                  ; D5
+            DEFW      168
+            DEFB    25                  ; E5
+            DEFW      141
+            DEFB    25                  ; G5
+            DEFW      141
+            DEFB    12                  ; G5
+            DEFW      126
+            DEFB    12                  ; A5
+            DEFW      141
+            DEFB    25                  ; G5
+            DEFW      168
+            DEFB    12                  ; E5
+            DEFW      212
+            DEFB    12                  ; C5
+            DEFW      189
+            DEFB    25                  ; D5
+            DEFW      168
+            DEFB    25                  ; E5
+            DEFW      168
+            DEFB    12                  ; E5
+            DEFW      189
+            DEFB    12                  ; D5
+            DEFW      212
+            DEFB    25                  ; C5
+            DEFW      189
+            DEFB    37                  ; D5
+            DEFW        0
+            DEFB    12                  ; -
+            DEFW      212
+            DEFB    12                  ; C5
+            DEFW      189
+            DEFB    12                  ; D5
+            DEFW      168
+            DEFB    25                  ; E5
+            DEFW      141
+            DEFB    25                  ; G5
+            DEFW      141
+            DEFB    12                  ; G5
+            DEFW      126
+            DEFB    12                  ; A5
+            DEFW      141
+            DEFB    25                  ; G5
+            DEFW      168
+            DEFB    12                  ; E5
+            DEFW      212
+            DEFB    12                  ; C5
+            DEFW      189
+            DEFB    25                  ; D5
+            DEFW      168
+            DEFB    25                  ; E5
+            DEFW      189
+            DEFB    25                  ; D5
+            DEFW      212
+            DEFB    50                  ; C5
+            DEFW        0
+            DEFB    12                  ; -
+            DEFW      159
+            DEFB    25                  ; F5
+            DEFW      159
+            DEFB    25                  ; F5
+            DEFW      126
+            DEFB    25                  ; A5
+            DEFW      126
+            DEFB    25                  ; A5
+            DEFW      126
+            DEFB    12                  ; A5
+            DEFW      141
+            DEFB    12                  ; G5
+            DEFW      168
+            DEFB    25                  ; E5
+            DEFW      212
+            DEFB    25                  ; C5
+            DEFW      189
+            DEFB    25                  ; D5
+            DEFW      168
+            DEFB    25                  ; E5
+            DEFW      189
+            DEFB    12                  ; D5
+            DEFW      212
+            DEFB    12                  ; C5
+            DEFW      189
+            DEFB    50                  ; D5
+            DEFW        0
+            DEFB    25                  ; -
+            DEFW    0xFFFF
+
+menu_b:              ; el bajo
+            DEFW      847
+            DEFB    25                  ; C3
+            DEFW      847
+            DEFB    25                  ; C3
+            DEFW      847
+            DEFB    25                  ; C3
+            DEFW      847
+            DEFB    25                  ; C3
+            DEFW     1131
+            DEFB    25                  ; G2
+            DEFW     1131
+            DEFB    25                  ; G2
+            DEFW      847
+            DEFB    25                  ; C3
+            DEFW      847
+            DEFB    25                  ; C3
+            DEFW      847
+            DEFB    25                  ; C3
+            DEFW      847
+            DEFB    25                  ; C3
+            DEFW     1131
+            DEFB    25                  ; G2
+            DEFW     1131
+            DEFB    25                  ; G2
+            DEFW      847
+            DEFB    25                  ; C3
+            DEFW      847
+            DEFB    25                  ; C3
+            DEFW      847
+            DEFB    25                  ; C3
+            DEFW      847
+            DEFB    25                  ; C3
+            DEFW     1270
+            DEFB    25                  ; F2
+            DEFW     1270
+            DEFB    25                  ; F2
+            DEFW     1270
+            DEFB    25                  ; F2
+            DEFW     1270
+            DEFB    25                  ; F2
+            DEFW      847
+            DEFB    25                  ; C3
+            DEFW      847
+            DEFB    25                  ; C3
+            DEFW     1131
+            DEFB    25                  ; G2
+            DEFW     1131
+            DEFB    25                  ; G2
+            DEFW      847
+            DEFB    25                  ; C3
+            DEFW      847
+            DEFB    25                  ; C3
+            DEFW      847
+            DEFB    50                  ; C3
+            DEFW    0xFFFF
+
+menu_c:              ; los acordes
+            DEFW      336
+            DEFB    12                  ; E4
+            DEFW      283
+            DEFB    12                  ; G4
+            DEFW      336
+            DEFB    12                  ; E4
+            DEFW      283
+            DEFB    12                  ; G4
+            DEFW      336
+            DEFB    12                  ; E4
+            DEFW      283
+            DEFB    12                  ; G4
+            DEFW      336
+            DEFB    12                  ; E4
+            DEFW      283
+            DEFB    12                  ; G4
+            DEFW      377
+            DEFB    12                  ; D4
+            DEFW      283
+            DEFB    12                  ; G4
+            DEFW      377
+            DEFB    12                  ; D4
+            DEFW      283
+            DEFB    12                  ; G4
+            DEFW      336
+            DEFB    12                  ; E4
+            DEFW      283
+            DEFB    12                  ; G4
+            DEFW      336
+            DEFB    12                  ; E4
+            DEFW      283
+            DEFB    12                  ; G4
+            DEFW      336
+            DEFB    12                  ; E4
+            DEFW      283
+            DEFB    12                  ; G4
+            DEFW      336
+            DEFB    12                  ; E4
+            DEFW      283
+            DEFB    12                  ; G4
+            DEFW      377
+            DEFB    12                  ; D4
+            DEFW      283
+            DEFB    12                  ; G4
+            DEFW      377
+            DEFB    12                  ; D4
+            DEFW      283
+            DEFB    12                  ; G4
+            DEFW      336
+            DEFB    12                  ; E4
+            DEFW      283
+            DEFB    12                  ; G4
+            DEFW      336
+            DEFB    12                  ; E4
+            DEFW      283
+            DEFB    12                  ; G4
+            DEFW      336
+            DEFB    12                  ; E4
+            DEFW      283
+            DEFB    12                  ; G4
+            DEFW      336
+            DEFB    12                  ; E4
+            DEFW      283
+            DEFB    12                  ; G4
+            DEFW      317
+            DEFB    12                  ; F4
+            DEFW      252
+            DEFB    12                  ; A4
+            DEFW      317
+            DEFB    12                  ; F4
+            DEFW      252
+            DEFB    12                  ; A4
+            DEFW      317
+            DEFB    12                  ; F4
+            DEFW      252
+            DEFB    12                  ; A4
+            DEFW      317
+            DEFB    12                  ; F4
+            DEFW      252
+            DEFB    12                  ; A4
+            DEFW      336
+            DEFB    12                  ; E4
+            DEFW      283
+            DEFB    12                  ; G4
+            DEFW      336
+            DEFB    12                  ; E4
+            DEFW      283
+            DEFB    12                  ; G4
+            DEFW      377
+            DEFB    12                  ; D4
+            DEFW      317
+            DEFB    12                  ; F4
+            DEFW      377
+            DEFB    12                  ; D4
+            DEFW      317
+            DEFB    12                  ; F4
+            DEFW      336
+            DEFB    12                  ; E4
+            DEFW      283
+            DEFB    12                  ; G4
+            DEFW      336
+            DEFB    12                  ; E4
+            DEFW      283
+            DEFB    12                  ; G4
+            DEFW      336
+            DEFB    25                  ; E4
+            DEFW        0
+            DEFB    25                  ; -
+            DEFW    0xFFFF
+
+fune_a:              ; marcha funebre: la melodia
+            DEFW      424
+            DEFB    37                  ; C4
+            DEFW      424
+            DEFB    12                  ; C4
+            DEFW      424
+            DEFB    25                  ; C4
+            DEFW      424
+            DEFB    25                  ; C4
+            DEFW      356
+            DEFB    37                  ; D#4
+            DEFW      377
+            DEFB    12                  ; D4
+            DEFW      377
+            DEFB    25                  ; D4
+            DEFW      424
+            DEFB    25                  ; C4
+            DEFW      424
+            DEFB    37                  ; C4
+            DEFW      476
+            DEFB    12                  ; A#3
+            DEFW      476
+            DEFB    25                  ; A#3
+            DEFW      534
+            DEFB    25                  ; G#3
+            DEFW      534
+            DEFB    37                  ; G#3
+            DEFW      566
+            DEFB    12                  ; G3
+            DEFW      566
+            DEFB    25                  ; G3
+            DEFW      424
+            DEFB    50                  ; C4
+            DEFW        0
+            DEFB    25                  ; -
+            DEFW    0xFFFF
+
+fune_b:              ; el bajo
+            DEFW     1695
+            DEFB    50                  ; C2
+            DEFW     1695
+            DEFB    50                  ; C2
+            DEFW     1068
+            DEFB    50                  ; G#2
+            DEFW     1131
+            DEFB    50                  ; G2
+            DEFW     1695
+            DEFB    50                  ; C2
+            DEFW     1425
+            DEFB    50                  ; D#2
+            DEFW     1131
+            DEFB    50                  ; G2
+            DEFW     1695
+            DEFB    50                  ; C2
+            DEFW        0
+            DEFB    25                  ; -
+            DEFW    0xFFFF
+
+fune_c:              ; los acordes
+            DEFW      712
+            DEFB    25                  ; D#3
+            DEFW      712
+            DEFB    25                  ; D#3
+            DEFW      712
+            DEFB    25                  ; D#3
+            DEFW      712
+            DEFB    25                  ; D#3
+            DEFW      566
+            DEFB    25                  ; G3
+            DEFW      566
+            DEFB    25                  ; G3
+            DEFW      712
+            DEFB    25                  ; D#3
+            DEFW      712
+            DEFB    25                  ; D#3
+            DEFW      712
+            DEFB    25                  ; D#3
+            DEFW      712
+            DEFB    25                  ; D#3
+            DEFW      847
+            DEFB    25                  ; C3
+            DEFW      847
+            DEFB    25                  ; C3
+            DEFW      755
+            DEFB    25                  ; D3
+            DEFW      755
+            DEFB    25                  ; D3
+            DEFW      712
+            DEFB    50                  ; D#3
+            DEFW        0
+            DEFB    25                  ; -
+            DEFW    0xFFFF
 
 ; ---- trozos de pantalla que hay que salvar del funeral ---------------
 decorado:                                   ; columna, y, filas, ancho
-            DEFB    CARRETA_COL, CARRETA_Y, CARRETA_ALTO, 3
             DEFB    CACTUS1_COL, CACTUS1_Y, CACTUS_ALTO, 2
             DEFB    CACTUS2_COL, CACTUS2_Y, CACTUS_ALTO, 2
-            DEFB    CAJA1_COL, CAJA_Y, CAJA_ALTO, 2
-            DEFB    CAJA2_COL, CAJA_Y, CAJA_ALTO, 2
+barril1_tab:
+            DEFB    CAJA1_COL, 0, CAJA_ALTO, 2      ; la y la pone cada partida
+barril2_tab:
+            DEFB    CAJA2_COL, 0, CAJA_ALTO, 2
             DEFB    0
 
 ; ---- variables ------------------------------------------------------
+b1:              DEFS NUM_BALAS*3       ; x, y y activa de cada bala
+b2:              DEFS NUM_BALAS*3
+balas1:          DEFB MUNICION
+balas2:          DEFB MUNICION
+tecla1:          DEFB 0                 ; para que un tiro sea una pulsacion
+tecla2:          DEFB 0
+bal_sent:        DEFB 0
+bal_ranura:      DEFW 0
+barril1_y:       DEFB 80
+barril2_y:       DEFB 144
+carreta_y:       DEFB CARRETA_ABAJO
+carreta_t:       DEFB 0
+carreta_espera:  DEFB 1
+modo_ia:         DEFB 0                 ; 1 = el bandido lo lleva la maquina
+ia_espera:       DEFB 12
+ia_mira:         DEFB 16
+dd_buf:          DEFS 12                ; una fila del sprite doblado
 ancho_bloque:    DEFB ANCHO_JUG
 tmp_x:           DEFB 0
 tmp_y:           DEFB 0
@@ -2159,11 +3349,15 @@ gen_alto:        DEFB CARACOL_ALTO
 gen_filas:       DEFB 0
 gen_bytes:       DEFB 0
 gen_resto:       DEFB 0
-mus_ptr:         DEFW 0
-mus_base:        DEFW 0
-mus_ticks:       DEFB 0
-mus_per:         DEFB 0
-mus_cic:         DEFB 0
+ay_est_a:        DEFS 6                 ; puntero, inicio, contador y volumen
+ay_est_b:        DEFS 6
+ay_est_c:        DEFS 6
+ay_num:          DEFB 0
+ay_est:          DEFW 0
+ay_par:          DEFB 0
+pc_tabla:        DEFW 0
+fx_t:            DEFB 0
+fx_vol:          DEFB 0
 p1_y:            DEFB P1_INI_Y
 p2_y:            DEFB P2_INI_Y
 b1_x:            DEFB 0

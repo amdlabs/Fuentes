@@ -26,25 +26,23 @@ def carga_probar():
 
 # guion: (fotogramas, teclas, comprobar)
 GUION = [
-    (50, [], 'pantalla'),                      # pantalla de carga (y las copias
+    (60, [], 'pantalla'),                      # pantalla de carga (y las copias
                                                # desplazadas, que tardan un poco)
-    (6, ['SPACE'], None),
+    (8, ['SPACE'], None),
     (40, [], 'pantalla'),                      # menu
-    (6, ['2'], None),
-    (30, [], 'pantalla'),                      # controles
-    (6, ['SPACE'], None),
+    (8, ['3'], None),                          # controles
+    (30, [], 'pantalla'),
+    (8, ['SPACE'], None),
     (30, [], None),
-    (6, ['1'], None),                          # a jugar
+    (8, ['2'], None),                          # partida a dos
     (30, [], 'todo'),
     (40, ['A'], 'todo'),                       # el sheriff baja
     (40, ['P'], 'todo'),                       # el bandido sube
-    (2, ['Z'], None),                          # dispara
-    (40, [], 'todo'),
-    (60, [], 'todo'),                          # la bala llega o choca
-    (30, ['L'], 'todo'),
+    (2, ['Z'], None),                          # y disparan los dos
     (2, ['B'], None),
+    (40, [], 'todo'),
     (60, [], 'todo'),
-    (90, [], 'todo'),                          # el caracol sigue andando
+    (90, [], 'todo'),                          # caracol y carreta andando
 ]
 
 
@@ -56,11 +54,12 @@ def main():
         f.write(rom)
 
     sim = probar.lee_simbolos(os.path.join(RAIZ, 'build', 'balava.sym'))
-    variables = ['p1_y', 'p2_y', 'b1_x', 'b1_act', 'b2_x', 'b2_act',
-                 'puntos1', 'puntos2', 'caracol_x', 'caracol_y', 'caracol_dir',
-                 'caracol_paso', 'semilla']
+    variables = ['p1_y', 'p2_y', 'puntos1', 'puntos2', 'balas1', 'balas2',
+                 'caracol_x', 'caracol_y', 'caracol_dir', 'caracol_paso',
+                 'carreta_y', 'barril1_y', 'barril2_y', 'modo_ia', 'semilla']
 
-    m = probar.Spectrum(os.path.join(RAIZ, 'dist', 'balava.z80'))
+    m = probar.Spectrum(os.path.join(RAIZ, 'build', 'balava.bin'),
+                        os.path.join(RAIZ, 'dist', 'balava.scr'))
     pasos = []
     for frames, teclas, comprobar in GUION:
         m.frames(frames, teclas)
