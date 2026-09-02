@@ -10,6 +10,27 @@ rompiendo a tiros tramo a tramo. Fondo amarillo, sprites en negro. Gana el
 primero que consiga 5 impactos.
 
     dist/balava.z80    <- snapshot listo para cargar en un emulador
+    dist/balava.scr    <- la pantalla de carga suelta (SCREEN$ de 6912 bytes)
+
+## Pantalla de carga
+
+Al arrancar sale una pantalla de carga al estilo de las de 1987: estallido de
+rayos amarillos y rojos, el título en rojo, los dos pistoleros recortados en
+negro, la carreta, los cactus y el caracol, y las bandas negras de arriba y
+abajo. Se queda a la vista hasta que se pulse una tecla.
+
+**Sin colour clash**: en el Spectrum cada celda de 8x8 admite una sola tinta y
+un solo papel, así que la pantalla se compone *a nivel de celda*. El fondo se
+pinta por celdas enteras (los rayos son cuñas cuyo color se decide por el
+ángulo de la celda, no del píxel) y cada dibujo declara con qué tinta entra; si
+dos dibujos de tintas distintas cayeran en la misma celda, `tools/pantalla_carga.py`
+lo detecta, lo dice y no escribe nada. Por construcción no puede haber choque
+de atributos, y como `build.sh` genera la pantalla en cada compilación, un
+descuido de composición rompe la compilación en vez de colarse en el juego.
+
+El dibujo no está duplicado: el generador lee los sprites del propio
+`src/balava.asm`, de los comentarios en ASCII que acompañan a cada `DEFB`, y los
+escala al doble.
 
 ## Menú
 
@@ -48,10 +69,12 @@ Hace falta [pasmo](https://pasmo.speccy.org/) y Python 3:
     sudo apt-get install pasmo
     ./build.sh
 
-`build.sh` ensambla `src/balava.asm` a un binario con ORG `0x8000` y
-`tools/make_z80.py` lo envuelve en un snapshot `.z80` de versión 1 sin
-comprimir (30 bytes de cabecera + los 49152 de RAM), con `PC=0x8000`,
-`SP=0xFF00`, borde amarillo, `IM 1` e interrupciones activas.
+`build.sh` genera la pantalla de carga, ensambla `src/balava.asm` a un binario
+con ORG `0x8000` y `tools/make_z80.py` lo envuelve en un snapshot `.z80` de
+versión 1 sin comprimir (30 bytes de cabecera + los 49152 de RAM), con
+`PC=0x8000`, `SP=0xFF00`, `IM 1` e interrupciones activas. La pantalla de carga
+va precargada en la memoria de vídeo del propio snapshot (`--pantalla`), así que
+no ocupa ni un byte de código ni hace falta descomprimir nada al arrancar.
 
 ## Pruebas
 
@@ -128,8 +151,9 @@ hace falta ninguna imagen de ROM con derechos.
 
 ## Ficheros
 
-    src/balava.asm       codigo fuente Z80 (pasmo)
-    tools/make_z80.py    genera el snapshot .z80 de 48K a partir del binario
-    tools/probar.py      pruebas sobre un Z80 emulado
-    build.sh             ensambla y genera dist/balava.z80
-    dist/                snapshot listo para usar
+    src/balava.asm         codigo fuente Z80 (pasmo)
+    tools/pantalla_carga.py compone la pantalla de carga sin colour clash
+    tools/make_z80.py      genera el snapshot .z80 de 48K a partir del binario
+    tools/probar.py        pruebas sobre un Z80 emulado
+    build.sh               ensambla y genera dist/balava.z80
+    dist/                  snapshot y pantalla de carga listos para usar

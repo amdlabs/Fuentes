@@ -89,6 +89,11 @@ inicio:
             call    genera_desplazados
             im      1
             ei
+            ; la pantalla de carga ya viene dibujada en el snapshot: se
+            ; queda a la vista hasta que el jugador pulse una tecla
+            xor     a
+            out     (0xFE),a                ; borde negro, a juego con ella
+            call    espera_tecla
 
 main:
             call    menu

@@ -20,13 +20,17 @@ def entero(texto):
     return int(texto, 0)
 
 
-def construir(binario, org, pc, sp, borde, iy):
+def construir(binario, org, pc, sp, borde, iy, pantalla=None):
     if not RAM_INI <= org < RAM_FIN:
         sys.exit(f"ORG {org:#06x} fuera de la RAM de un 48K")
     if org + len(binario) > RAM_FIN:
         sys.exit("el binario no cabe en la RAM a partir de ORG")
 
     ram = bytearray(RAM_LEN)
+    if pantalla is not None:
+        if len(pantalla) != 6912:
+            sys.exit(f'la pantalla mide {len(pantalla)} bytes y tiene que medir 6912')
+        ram[0:6912] = pantalla          # 0x4000: pixeles y atributos
     ram[org - RAM_INI:org - RAM_INI + len(binario)] = binario
 
     cab = bytearray(30)
@@ -63,6 +67,7 @@ def main():
     ap.add_argument("--sp", type=entero, default=0xFF00, help="puntero de pila")
     ap.add_argument("--borde", type=entero, default=6, help="color del borde (6 = amarillo)")
     ap.add_argument("--iy", type=entero, default=0x5C3A, help="IY (lo usa la RST 38 de la ROM)")
+    ap.add_argument("--pantalla", help="SCREEN$ de 6912 bytes para la pantalla de carga")
     args = ap.parse_args()
 
     with open(args.binario, "rb") as f:
@@ -72,12 +77,18 @@ def main():
     if pc == 0:
         sys.exit("PC no puede ser 0 en un .z80 de version 1")
 
-    datos = construir(binario, args.org, pc, args.sp, args.borde, args.iy)
+    pantalla = None
+    if args.pantalla:
+        with open(args.pantalla, "rb") as f:
+            pantalla = f.read()
+
+    datos = construir(binario, args.org, pc, args.sp, args.borde, args.iy, pantalla)
     with open(args.salida, "wb") as f:
         f.write(datos)
 
     print(f"{args.salida}: {len(datos)} bytes "
-          f"(codigo {len(binario)} bytes en {args.org:#06x}, PC={pc:#06x}, SP={args.sp:#06x})")
+          f"(codigo {len(binario)} bytes en {args.org:#06x}, PC={pc:#06x}, SP={args.sp:#06x}"
+          f"{', con pantalla de carga' if pantalla else ''})")
 
 
 if __name__ == "__main__":
