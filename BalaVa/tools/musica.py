@@ -22,7 +22,9 @@ CROMA = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 
 
 def periodo(nota):
-    """Periodo del AY de una nota tipo 'D#4'."""
+    """Periodo del AY de una nota tipo 'D#4'; 0 es el silencio."""
+    if nota is None or nota == 'silencio':
+        return 0
     grado = CROMA.index(nota[:-1])
     octava = int(nota[-1])
     f = 440.0 * 2 ** ((octava * 12 + grado - (4 * 12 + 9)) / 12.0)
@@ -47,6 +49,28 @@ CANCIONES = {
                     'F': ['C4', 'F4', 'A4', 'F4'],
                     'G': ['D4', 'G4', 'B4', 'G4']},
         'paso': 12, 'pulso': 25,
+    },
+    'cre': {                                    # creditos: original, lenta y lugubre
+        'melodia': [
+            ('D4', 75), ('A4', 75), ('F4', 50), ('E4', 25), ('D4', 100), (None, 25),
+            ('D4', 75), ('A#4', 75), ('A4', 50), ('G4', 25), ('F4', 100), (None, 25),
+            ('A4', 75), ('D5', 75), ('C5', 50), ('A#4', 25), ('A4', 100), (None, 25),
+            ('F4', 50), ('G4', 50), ('A4', 75), ('F4', 25), ('E4', 50),
+            ('D4', 150), (None, 50),
+        ],
+        'plan': [                               # la armonia, en re menor
+            ('Dm', 200), ('A', 25), ('Dm', 125),
+            ('Dm', 75), ('Bb', 75), ('Dm', 50), ('Gm', 25), ('F', 125),
+            ('Dm', 150), ('F', 50), ('Bb', 25), ('A', 125),
+            ('Dm', 50), ('Gm', 50), ('A', 75), ('Dm', 25), ('A', 50), ('Dm', 200),
+        ],
+        'bajo': {'Dm': 'D2', 'Gm': 'G2', 'A': 'A2', 'Bb': 'A#2', 'F': 'F2'},
+        'arpegio': {'Dm': ['D3', 'F3', 'A3', 'F3'],
+                    'Gm': ['G3', 'A#3', 'D4', 'A#3'],
+                    'A': ['E3', 'A3', 'C#4', 'A3'],
+                    'Bb': ['D3', 'F3', 'A#3', 'F3'],
+                    'F': ['F3', 'A3', 'C4', 'A3']},
+        'paso': 50, 'pulso': 100,
     },
     'fune': {                                   # marcha funebre, en do menor
         'acordes': {'C': 'Cm', 'D': 'G', 'D#': 'Cm', 'F': 'Fm', 'G': 'Cm',
@@ -140,9 +164,18 @@ def main():
     texto = open(FUENTE, encoding='utf-8').read()
     mal = 0
     for nombre, receta in CANCIONES.items():
-        melodia = lee_canal(texto, nombre + '_a')
+        if 'melodia' in receta:               # cancion propia: tambien la melodia
+            melodia = [(periodo(n) if n else 0, d) for n, d in receta['melodia']]
+        else:
+            melodia = lee_canal(texto, nombre + '_a')
         total = sum(d for _, d in melodia)
-        piezas = tramos(melodia, receta['acordes'])
+        if 'plan' in receta:
+            piezas = [list(p) for p in receta['plan']]
+            plan = sum(d for _, d in piezas)
+            if plan != total:
+                sys.exit(f'{nombre}: la armonia dura {plan} y la melodia {total}')
+        else:
+            piezas = tramos(melodia, receta['acordes'])
         bajo = haz_bajo(piezas, receta['bajo'], receta['pulso'])
         arpegio = haz_arpegio(piezas, receta['arpegio'], receta['paso'])
         if args.comprobar:
@@ -153,6 +186,11 @@ def main():
                           f'la melodia dura {total}')
                     mal += 1
             continue
+        if 'melodia' in receta:
+            texto = sustituye(texto, nombre + '_a',
+                              bloque(nombre + '_a', 'la melodia',
+                                     [(n or 'silencio', d)
+                                      for n, d in receta['melodia']]))
         texto = sustituye(texto, nombre + '_b',
                           bloque(nombre + '_b', 'el bajo', bajo))
         texto = sustituye(texto, nombre + '_c',

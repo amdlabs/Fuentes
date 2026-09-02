@@ -390,6 +390,7 @@ def main():
     m.frames(10, ['SPACE'])
     m.frames(20)
     P.check(m.peek(0x5800) == ATTR_JUEGO, 'y una tecla devuelve al menu')
+    P.check(val('musica') == 1, 'con Oh! Susanna sonando otra vez')
 
     # ---------------------------------------------------------------
     print('\n6. Opcion 2: partida a dos')
@@ -410,6 +411,15 @@ def main():
             'barril del sheriff dibujado')
     P.check(m.bloque(BARRIL2_COL, val('barril2_y'), 32, 2) == barril,
             'barril del bandido dibujado')
+    P.check(val('musica') == 0 and m.ay[8] == 0 and m.ay[9] == 0,
+            'y se juega sin musica de fondo')
+    notas = set()
+    for _ in range(100):
+        m.frames(1)
+        notas.add(tuple(m.periodo_canal(c) for c in range(2)))
+    P.check(len(notas) == 1, 'la cancion no avanza mientras se juega',
+            f'{len(notas)} combinacion(es) en dos segundos')
+
 
     # ---------------------------------------------------------------
     print('\n7. La carreta sube por el centro')
@@ -417,8 +427,14 @@ def main():
     m.frames(40)
     P.check(val('carreta_y') == y0 - 10, 'un pixel cada cuatro fotogramas',
             f'{y0} -> {val("carreta_y")}')
-    P.check(not any(m.memory[dir_pantalla(y, 14)] for y in range(val('carreta_y') + 28, 192)),
-            'y no deja rastro por debajo')
+    n = 0                                   # a que el caracol deje libre la
+    while val('caracol_x') // 8 <= 16 and n < 400:    # calle de la carreta
+        m.frames(1)
+        n += 1
+    tramo = range(val('carreta_y') + 28, min(192, val('carreta_y') + 44))
+    P.check(len(tramo) > 8 and not any(m.memory[dir_pantalla(y, c)]
+                                       for y in tramo for c in range(14, 17)),
+            'y no deja rastro por debajo', f'{len(tramo)} filas limpias')
 
     # ---------------------------------------------------------------
     print('\n8. Varias balas en el aire')
@@ -429,7 +445,12 @@ def main():
     while val('p1_y') < calle:
         m.frames(1, ['A'])
     antes = val('balas1')
-    for _ in range(3):
+    m.frames(2, ['Z'])
+    P.check(not m.ay[7] & 0b100000 and m.ay[10] > 0,
+            'sin musica, pero el disparo si se oye',
+            f'mezclador {bin(m.ay[7])}, volumen C {m.ay[10]}')
+    m.frames(8)
+    for _ in range(2):
         m.frames(2, ['Z'])
         m.frames(8)
     vivas = [n for n in range(NUM_BALAS) if bala('b1', n, 2)]
@@ -500,6 +521,7 @@ def main():
         n += 1
     P.check(m.peek(0x5800) == 0 and m.peek(0x5800 + 12 * 32) == 0x30,
             'la cinematica pone las bandas negras de cine')
+    P.check(val('musica') == 1, 'con la marcha funebre ya sonando')
     m.frames(60)
     captura(m, '7-cine.png')
     n = 0
@@ -516,6 +538,7 @@ def main():
     P.check(m.bloque(COL_P1, 40, ALTO, ANCHO) == poli, 'con los dos en su sitio')
     P.check(m.bloque(BARRIL1_COL, val('barril1_y'), 32, 2) == barril,
             'y el barril entero otra vez')
+    P.check(val('musica') == 0, 'y se vuelve a jugar en silencio')
     captura(m, '9-vuelta.png')
 
     # ---------------------------------------------------------------

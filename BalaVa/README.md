@@ -100,7 +100,8 @@ terminar una partida, cualquier tecla devuelve al menú.
 
 La opción 4 abre los créditos: la **foto del autor digitalizada a un bit**
 ocupando la pantalla entera y, por encima, los rótulos subiendo al píxel con una
-marcha en re menor sonando por el AY.
+marcha lenta en re menor sonando por el AY —treinta segundos de notas largas,
+bajo pedal y un arpegio que dobla despacio.
 
 La foto la prepara `tools/foto.py`: recorta a 4:3 sobre la cara, abre las sombras
 con una gamma de 0,72 —si no, los ojos se cierran en dos manchas negras—, realza
@@ -285,17 +286,25 @@ agujeros que ya tuvieran**.
   periodo sale de `1773400 / (16*f)` y el volumen decae en cada nota, que da el
   punteo. Los efectos —disparo, rebote, rotura, impacto— se quedan con el canal
   C: le meten ruido y un volumen que cae, y al terminar devuelven los acordes.
-  Hay tres canciones: **Oh! Susanna** en el menú, la **marcha fúnebre** de Chopin
-  en el funeral y una **marcha en re menor** escrita para los créditos, con
-  melodía, bajo andante y un arpegio en corcheas. La melodía entra a volumen 15
-  y el acompañamiento a 13 y 11, para que no la tape.
+  Hay tres canciones y cada una suena en su sitio: **Oh! Susanna** en el menú,
+  la **marcha fúnebre** de Chopin desde el momento en que a alguien le dan hasta
+  que la carreta se lleva el ataúd, y una **marcha lenta en re menor**, escrita
+  para los créditos, mientras sube el texto. **Durante la partida no hay música**:
+  solo se oyen los disparos, los rebotes y los impactos, que se cuelan por el
+  canal C sin pasar por el reproductor. Al volver al menú, Oh! Susanna otra vez.
+
+  La melodía entra a volumen 15 y el acompañamiento a 13 y 11, para que no la
+  tape, y cada canción dice cuánto tarda una nota en apagarse: el menú a 2
+  fotogramas por escalón de volumen, muy punteado, y los créditos a 5, para que
+  las notas largas se sostengan.
 
   Cada voz se reproduce por su lado y vuelve a empezar al llegar a su final, así
   que **las tres tienen que durar exactamente lo mismo**: si no, a la segunda
   vuelta el bajo y el arpegio suenan contra la melodía. Por eso el bajo y el
   arpegio no se escriben a mano, los saca `tools/musica.py` de la propia melodía:
   le asigna un acorde a cada nota, junta los que se repiten y rellena cada tramo
-  con la raíz y con las notas del acorde en rueda. `build.sh` no compila si las
+  con la raíz y con las notas del acorde en rueda. De la de los créditos, que es
+  original, lleva también la melodía y la lista de acordes escritas a mano. `build.sh` no compila si las
   tres voces de una canción no cuadran, y las pruebas comprueban además que al
   cabo de una vuelta entera el AY vuelve al mismo estado.
 - **Ritmo**: `HALT` en el bucle principal sincroniza el juego a los 50 Hz de la
