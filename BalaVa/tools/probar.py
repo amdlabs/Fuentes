@@ -84,7 +84,6 @@ class Spectrum(z80.Z80Machine):
             for n, tecla in enumerate(teclas):
                 if tecla in self.pulsadas:
                     res &= ~(1 << n) & 0xFF
-            return res
         return res
 
     def frames(self, n, teclas=()):
@@ -137,8 +136,8 @@ class Pruebas:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--png', help='directorio donde guardar capturas')
-    ap.add_argument('--z80', default=os.path.join(RAIZ, 'dist', 'policia_ladron.z80'))
-    ap.add_argument('--sym', default=os.path.join(RAIZ, 'build', 'juego.sym'))
+    ap.add_argument('--z80', default=os.path.join(RAIZ, 'dist', 'balava.z80'))
+    ap.add_argument('--sym', default=os.path.join(RAIZ, 'build', 'balava.sym'))
     args = ap.parse_args()
 
     if args.png:
@@ -154,25 +153,50 @@ def main():
     val = lambda n: m.peek(sim[n])
 
     # ---------------------------------------------------------------
-    print('\n1. Pantalla de presentacion')
+    print('\n1. Menu')
     m.frames(10)
-    captura(m, '1-titulo.png')
+    captura(m, '1-menu.png')
     poli = [m.peek(sim['spr_poli'] + i) for i in range(16)]
     ladron = [m.peek(sim['spr_ladron'] + i) for i in range(16)]
-    P.check(m.columna(2, 16, 32) == poli, 'el policia aparece junto al titulo')
-    P.check(m.columna(29, 16, 32) == ladron, 'el ladron aparece junto al titulo')
-    filas_texto = {y // 8 for y in range(192)
-                   if any(m.memory[dir_pantalla(y, c)] for c in range(32))}
-    P.check(filas_texto == {2, 3, 6, 7, 8, 11, 12, 13, 16, 19},
-            'los textos caen en las filas previstas', str(sorted(filas_texto)))
-    P.check(all(m.memory[dir_pantalla(y, 0)] == 0 for y in range(48, 192)),
-            'ningun texto se desborda a la columna 0')
+    P.check(all(m.memory[dir_pantalla(y, c)] == 0xFF for y in (2, 3, 188, 189)
+                for c in range(32)), 'marco: lineas de arriba y abajo')
+    P.check(all(m.memory[dir_pantalla(y, 0)] & 0x30 == 0x30 and
+                m.memory[dir_pantalla(y, 31)] & 0x0C == 0x0C for y in range(4, 188)),
+            'marco: lineas de los lados')
+    banda = [m.memory[dir_pantalla(y, c)] for y in range(24, 56) for c in range(1, 30)]
+    P.check(all(b == 0xFF for b in banda[:29]), 'banda negra del logotipo')
+    huecos = sum(bin(m.memory[dir_pantalla(y, c)] ^ 0xFF).count('1')
+                 for y in range(33, 47) for c in range(10, 22))
+    esperados = 0                              # pixeles de las seis letras
+    for i in range(6):
+        glifo = m.peek(sim['logo_letras'] + i * 2) | (m.peek(sim['logo_letras'] + i * 2 + 1) << 8)
+        esperados += sum(bin(m.peek(glifo + n)).count('1') for n in range(28))
+    P.check(huecos == esperados, 'el logotipo BALAVA aparece en hueco sobre la banda',
+            f'{huecos} de {esperados} pixeles')
+    P.check(m.columna(8, 72, 88) == poli and m.columna(22, 72, 88) == ladron,
+            'los dos personajes se apuntan bajo el logotipo')
+    P.check(all(m.peek(0x5800 + 19 * 32 + c) == 0xB0 for c in range(10, 21)),
+            'el aviso PULSA 1 O 2 usa el bit FLASH')
 
     # ---------------------------------------------------------------
-    print('\n2. Comienzo de la partida (ENTER)')
-    m.frames(3, ['ENTER'])
+    print('\n2. Opcion 2: pantalla de controles')
+    m.frames(3, ['2'])
     m.frames(5)
-    captura(m, '2-partida.png')
+    captura(m, '2-controles.png')
+    filas = {y // 8 for y in range(8, 184)
+             if any(m.memory[dir_pantalla(y, c)] for c in range(4, 28))}
+    P.check(filas == {3, 7, 8, 9, 12, 13, 14, 17, 20}, 'textos de la ayuda',
+            str(sorted(filas)))
+    m.frames(3, ['SPACE'])
+    m.frames(5)
+    P.check(all(m.memory[dir_pantalla(24, c)] == 0xFF for c in range(1, 30)),
+            'cualquier tecla devuelve al menu')
+
+    # ---------------------------------------------------------------
+    print('\n3. Opcion 1: empieza la partida')
+    m.frames(3, ['1'])
+    m.frames(5)
+    captura(m, '3-partida.png')
     P.check((val('p1_y'), val('p2_y')) == (48, 128), 'jugadores en su posicion de salida',
             f"{val('p1_y')},{val('p2_y')}")
     P.check(val('puntos1') == 0 and val('puntos2') == 0, 'marcador a cero')
@@ -182,7 +206,7 @@ def main():
             'linea separadora del marcador')
 
     # ---------------------------------------------------------------
-    print('\n3. Movimiento y limites')
+    print('\n4. Movimiento y limites')
     m.frames(10, ['Q'])
     P.check(val('p1_y') == 28, 'Q sube 2 pixeles por fotograma', str(val('p1_y')))
     m.frames(10, ['A'])
@@ -199,24 +223,24 @@ def main():
             'al moverse no deja rastro en su columna')
 
     # ---------------------------------------------------------------
-    print('\n4. Disparo que falla')
+    print('\n5. Disparo que falla')
     m.frames(120, ['Q'])                                    # policia arriba, ladron abajo
     m.frames(2, ['V'])
     P.check(val('b1_act') == 1 and val('b1_y') == val('p1_y') + 7,
             'la bala sale a la altura del brazo')
     m.frames(15)
-    captura(m, '3-bala.png')
+    captura(m, '4-bala.png')
     P.check(val('b1_x') > 24 and val('b1_act') == 1, 'la bala avanza', f"x={val('b1_x')}")
     m.frames(60)
     P.check(val('b1_act') == 0 and val('puntos1') == 0, 'sin alineacion no hay impacto')
 
     # ---------------------------------------------------------------
-    print('\n5. Impactos')
+    print('\n6. Impactos')
     while val('p1_y') != val('p2_y'):
         m.frames(1, ['A'] if val('p1_y') < val('p2_y') else ['Q'])
     m.frames(2, ['V'])
     m.frames(80)
-    captura(m, '4-impacto.png')
+    captura(m, '5-impacto.png')
     P.check(val('puntos1') == 1, 'el policia acierta al ladron', f"{val('puntos1')}-{val('puntos2')}")
     P.check((val('p1_y'), val('p2_y')) == (48, 128), 'la ronda recoloca a los dos')
     while val('p1_y') != val('p2_y'):
@@ -226,7 +250,7 @@ def main():
     P.check(val('puntos2') == 1, 'el ladron acierta al policia', f"{val('puntos1')}-{val('puntos2')}")
 
     # ---------------------------------------------------------------
-    print('\n6. Esquiva y balas cruzadas')
+    print('\n7. Esquiva y balas cruzadas')
     while val('p1_y') != val('p2_y'):
         m.frames(1, ['A'] if val('p1_y') < val('p2_y') else ['Q'])
     antes = (val('puntos1'), val('puntos2'))
@@ -236,7 +260,7 @@ def main():
     P.check((val('puntos1'), val('puntos2')) == antes, 'moverse a tiempo esquiva la bala')
     m.frames(2, ['V', 'SPACE'])
     m.frames(26)
-    captura(m, '5-cruce.png')
+    captura(m, '6-cruce.png')
     P.check(val('b1_act') == 1 and val('b2_act') == 1, 'las dos balas conviven')
     m.frames(80)
     sucio = sum(1 for y in range(16, 192) for c in range(32)
@@ -244,7 +268,7 @@ def main():
     P.check(sucio == 0, 'las balas no dejan rastro al cruzarse', f'{sucio} bytes')
 
     # ---------------------------------------------------------------
-    print('\n7. Fin de partida')
+    print('\n8. Fin de partida')
     for _ in range(12):
         if val('puntos1') >= 5:
             break
@@ -258,11 +282,12 @@ def main():
     filas = {y // 8 for y in range(192)
              if any(m.memory[dir_pantalla(y, c)] for c in range(32))}
     P.check(filas == {9, 12, 16}, 'pantalla de ganador (texto + resultado)', str(sorted(filas)))
-    m.frames(3, ['ENTER'])
+    m.frames(3, ['SPACE'])
     m.frames(10)
-    captura(m, '7-vuelta.png')
-    P.check(m.columna(2, 16, 32) == poli, 'ENTER devuelve a la presentacion')
-    m.frames(3, ['ENTER'])
+    captura(m, '8-vuelta.png')
+    P.check(all(m.memory[dir_pantalla(24, c)] == 0xFF for c in range(1, 30)),
+            'al acabar se vuelve al menu')
+    m.frames(3, ['1'])
     m.frames(10)
     P.check((val('p1_y'), val('p2_y'), val('puntos1')) == (48, 128, 0),
             'la partida nueva parte de cero')

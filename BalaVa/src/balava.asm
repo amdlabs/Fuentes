@@ -1,5 +1,5 @@
 ;=====================================================================
-;  POLICIA Y LADRON  -  ZX Spectrum 48K  -  2 jugadores
+;  B A L A V A   -  ZX Spectrum 48K  -  2 jugadores
 ;---------------------------------------------------------------------
 ;  El policia (izquierda) y el ladron (derecha) se disparan de lado a
 ;  lado.  Solo pueden moverse arriba y abajo para esquivar las balas.
@@ -9,7 +9,7 @@
 ;     Jugador 1 - POLICIA : Q = arriba   A = abajo   V = disparo
 ;     Jugador 2 - LADRON  : P = arriba   L = abajo   ESPACIO = disparo
 ;
-;  Ensamblar con:  pasmo --bin src/juego.asm build/juego.bin
+;  Ensamblar con:  pasmo --bin src/balava.asm build/balava.bin
 ;=====================================================================
 
 SCREEN      EQU 0x4000              ; memoria de pantalla
@@ -53,7 +53,7 @@ inicio:
             ei
 
 main:
-            call    pantalla_titulo
+            call    menu
             call    partida
             jr      main
 
@@ -137,11 +137,11 @@ fin_partida:
             ld      b,12
             ld      c,22
             call    print_char
-            ld      hl,txt_enter
+            ld      hl,txt_tecla
             ld      b,16
             ld      c,5
             call    print_str
-            call    espera_enter
+            call    espera_tecla
             ret
 
 ;---------------------------------------------------------------------
@@ -578,14 +578,25 @@ dibuja_marcador:
             ld      b,0
             ld      c,22
             call    print_str
+            ld      hl,txt_juego
+            ld      b,0
+            ld      c,13
+            call    print_str
             ld      a,13                    ; linea horizontal bajo el marcador
+            jp      linea_horizontal
+
+;---------------------------------------------------------------------
+; linea_horizontal - linea de 256 pixeles de ancho
+;   entrada: A = y
+;---------------------------------------------------------------------
+linea_horizontal:
             ld      c,0
             call    scr_addr
             ld      b,32
-dm_bucle:
+lh_bucle:
             ld      (hl),0xFF
             inc     l
-            djnz    dm_bucle
+            djnz    lh_bucle
             ret
 
 ;---------------------------------------------------------------------
@@ -606,69 +617,221 @@ hud_puntos:
 ;=====================================================================
 ; PANTALLA DE PRESENTACION
 ;=====================================================================
-pantalla_titulo:
+menu:
             call    limpia_pantalla
-            ld      hl,txt_titulo
-            ld      b,2
+            call    dibuja_marco
+            call    dibuja_logo
+            ; los dos personajes apuntandose bajo el logotipo
+            ld      a,72
+            ld      c,8
+            ld      de,spr_poli
+            call    dibuja_jugador
+            ld      a,72
+            ld      c,22
+            ld      de,spr_ladron
+            call    dibuja_jugador
+            ld      b,79                    ; y de la bala entre los dos
+            ld      a,120                   ; x de la bala
+            call    bala_xor
+            ; opciones
+            ld      hl,txt_op1
+            ld      b,13
+            ld      c,12
+            call    print_str
+            ld      hl,txt_op2
+            ld      b,15
+            ld      c,12
+            call    print_str
+            ld      hl,txt_pulsa
+            ld      b,19
+            ld      c,10
+            call    print_str
+            ld      hl,txt_autor
+            ld      b,21
             ld      c,8
             call    print_str
-            ld      hl,txt_j1
-            ld      b,6
-            ld      c,6
+            ; el aviso parpadea con el bit FLASH de los atributos
+            ld      hl,ATTRS+(19*32)+10
+            ld      b,11
+menu_flash:
+            ld      (hl),0x80+ATTR_JUEGO
+            inc     hl
+            djnz    menu_flash
+            call    espera_libre
+menu_espera:
+            halt
+            ld      bc,0xF7FE               ; fila 1 2 3 4 5
+            in      a,(c)
+            ld      b,a
+            and     %00000001               ; tecla 1 = jugar
+            ret     z
+            ld      a,b
+            and     %00000010               ; tecla 2 = controles
+            jr      nz,menu_espera
+            call    pantalla_controles
+            jr      menu
+
+;---------------------------------------------------------------------
+; pantalla_controles - la ayuda del menu
+;---------------------------------------------------------------------
+pantalla_controles:
+            call    limpia_pantalla
+            call    dibuja_marco
+            ld      hl,txt_controles
+            ld      b,3
+            ld      c,11
             call    print_str
-            ld      hl,txt_j1b
+            ld      hl,txt_j1
             ld      b,7
             ld      c,6
             call    print_str
-            ld      hl,txt_j1c
+            ld      hl,txt_j1b
             ld      b,8
             ld      c,6
             call    print_str
-            ld      hl,txt_j2
-            ld      b,11
+            ld      hl,txt_j1c
+            ld      b,9
             ld      c,6
             call    print_str
-            ld      hl,txt_j2b
+            ld      hl,txt_j2
             ld      b,12
             ld      c,6
             call    print_str
-            ld      hl,txt_j2c
+            ld      hl,txt_j2b
             ld      b,13
             ld      c,6
             call    print_str
+            ld      hl,txt_j2c
+            ld      b,14
+            ld      c,6
+            call    print_str
             ld      hl,txt_reglas
-            ld      b,16
+            ld      b,17
             ld      c,5
             call    print_str
-            ld      hl,txt_enter
-            ld      b,19
+            ld      hl,txt_tecla
+            ld      b,20
             ld      c,5
             call    print_str
-            ; los dos personajes, uno a cada lado del titulo
-            ld      a,16
-            ld      c,COL_P1
-            ld      de,spr_poli
-            call    dibuja_jugador
-            ld      a,16
-            ld      c,COL_P2
-            ld      de,spr_ladron
-            call    dibuja_jugador
-            jp      espera_enter
+            jp      espera_tecla
 
 ;---------------------------------------------------------------------
-; espera_enter - espera a que se suelte y se vuelva a pulsar ENTER
+; dibuja_marco - recuadro de 2 pixeles alrededor de la pantalla
 ;---------------------------------------------------------------------
-espera_enter:
-ee_soltar:
-            ld      bc,0xBFFE
+dibuja_marco:
+            ld      a,2
+            call    linea_horizontal
+            ld      a,3
+            call    linea_horizontal
+            ld      a,188
+            call    linea_horizontal
+            ld      a,189
+            call    linea_horizontal
+            ld      a,4
+            ld      c,0
+            call    scr_addr
+            ld      b,184                   ; y = 4 .. 187
+dmarco_bucle:
+            ld      a,(hl)
+            or      %00110000               ; x = 2 y 3
+            ld      (hl),a
+            ld      a,l
+            add     a,31                    ; misma fila, columna 31
+            ld      l,a
+            ld      a,(hl)
+            or      %00001100               ; x = 252 y 253
+            ld      (hl),a
+            ld      a,l
+            sub     31
+            ld      l,a
+            call    down_hl
+            djnz    dmarco_bucle
+            ret
+
+;---------------------------------------------------------------------
+; dibuja_logo - banda negra con BALAVA en hueco
+;---------------------------------------------------------------------
+dibuja_logo:
+            ld      a,24                    ; banda de y=24 a y=55
+            ld      c,1
+            call    scr_addr
+            ld      b,32
+dlogo_fila:
+            push    bc
+            push    hl
+            ld      b,30                    ; columnas 1 a 30
+dlogo_col:
+            ld      (hl),0xFF
+            inc     l
+            djnz    dlogo_col
+            pop     hl
+            call    down_hl
+            pop     bc
+            djnz    dlogo_fila
+            ld      hl,logo_letras          ; las letras, en hueco
+            ld      b,6
+            ld      c,10                    ; primera columna del logotipo
+dlogo_letra:
+            push    bc
+            ld      e,(hl)
+            inc     hl
+            ld      d,(hl)
+            inc     hl
+            push    hl
+            ld      a,33                    ; y de las letras
+            call    dibuja_letra
+            pop     hl
+            pop     bc
+            inc     c
+            inc     c
+            djnz    dlogo_letra
+            ret
+
+;---------------------------------------------------------------------
+; dibuja_letra - letra del logotipo (16x14) en XOR
+;   entrada: A = y, C = columna, DE = datos de la letra
+;---------------------------------------------------------------------
+dibuja_letra:
+            call    scr_addr
+            ld      b,14
+dletra_fila:
+            ld      a,(de)
+            xor     (hl)
+            ld      (hl),a
+            inc     de
+            inc     l
+            ld      a,(de)
+            xor     (hl)
+            ld      (hl),a
+            inc     de
+            dec     l
+            call    down_hl
+            djnz    dletra_fila
+            ret
+
+;---------------------------------------------------------------------
+; espera_tecla - espera a que se suelte todo y se pulse cualquier tecla
+;   (con el byte alto a 0 se leen las ocho semifilas a la vez)
+;---------------------------------------------------------------------
+espera_tecla:
+            call    espera_libre
+et_pulsar:
+            ld      bc,0x00FE
             in      a,(c)
-            and     %00000001
-            jr      z,ee_soltar
-ee_pulsar:
-            ld      bc,0xBFFE
+            and     %00011111
+            cp      %00011111
+            jr      z,et_pulsar
+            ret
+
+;---------------------------------------------------------------------
+; espera_libre - espera a que no quede ninguna tecla pulsada
+;---------------------------------------------------------------------
+espera_libre:
+            ld      bc,0x00FE
             in      a,(c)
-            and     %00000001
-            jr      nz,ee_pulsar
+            and     %00011111
+            cp      %00011111
+            jr      nz,espera_libre
             ret
 
 ;=====================================================================
@@ -745,10 +908,83 @@ spr_ladron:                                 ; mira hacia la izquierda
             DEFB    %01101100               ; .XX.XX..
             DEFB    %01100110               ; .XX..XX.  pies
 
+; ---- letras del logotipo (16x14 pixeles) ----------------------------
+logo_letras:
+            DEFW    logo_b, logo_a, logo_l, logo_a, logo_v, logo_a
+
+logo_a:                                 ; letra A del logotipo
+            DEFB    %00001111,%10000000   ; ....#####.......
+            DEFB    %00011111,%11000000   ; ...#######......
+            DEFB    %00111000,%11100000   ; ..###...###.....
+            DEFB    %01110000,%01110000   ; .###.....###....
+            DEFB    %11100000,%00111000   ; ###.......###...
+            DEFB    %11100000,%00111000   ; ###.......###...
+            DEFB    %11100000,%00111000   ; ###.......###...
+            DEFB    %11111111,%11111000   ; #############...
+            DEFB    %11111111,%11111000   ; #############...
+            DEFB    %11100000,%00111000   ; ###.......###...
+            DEFB    %11100000,%00111000   ; ###.......###...
+            DEFB    %11100000,%00111000   ; ###.......###...
+            DEFB    %11100000,%00111000   ; ###.......###...
+            DEFB    %11100000,%00111000   ; ###.......###...
+
+logo_b:                                 ; letra B del logotipo
+            DEFB    %11111111,%11000000   ; ##########......
+            DEFB    %11111111,%11100000   ; ###########.....
+            DEFB    %11100000,%11110000   ; ###.....####....
+            DEFB    %11100000,%01110000   ; ###......###....
+            DEFB    %11100000,%11110000   ; ###.....####....
+            DEFB    %11111111,%11100000   ; ###########.....
+            DEFB    %11111111,%11000000   ; ##########......
+            DEFB    %11111111,%11100000   ; ###########.....
+            DEFB    %11100000,%11110000   ; ###.....####....
+            DEFB    %11100000,%01110000   ; ###......###....
+            DEFB    %11100000,%01110000   ; ###......###....
+            DEFB    %11100000,%11110000   ; ###.....####....
+            DEFB    %11111111,%11100000   ; ###########.....
+            DEFB    %11111111,%11000000   ; ##########......
+
+logo_l:                                 ; letra L del logotipo
+            DEFB    %11100000,%00000000   ; ###.............
+            DEFB    %11100000,%00000000   ; ###.............
+            DEFB    %11100000,%00000000   ; ###.............
+            DEFB    %11100000,%00000000   ; ###.............
+            DEFB    %11100000,%00000000   ; ###.............
+            DEFB    %11100000,%00000000   ; ###.............
+            DEFB    %11100000,%00000000   ; ###.............
+            DEFB    %11100000,%00000000   ; ###.............
+            DEFB    %11100000,%00000000   ; ###.............
+            DEFB    %11100000,%00000000   ; ###.............
+            DEFB    %11100000,%00000000   ; ###.............
+            DEFB    %11100000,%00000000   ; ###.............
+            DEFB    %11111111,%11111000   ; #############...
+            DEFB    %11111111,%11111000   ; #############...
+
+logo_v:                                 ; letra V del logotipo
+            DEFB    %11100000,%00111000   ; ###.......###...
+            DEFB    %11100000,%00111000   ; ###.......###...
+            DEFB    %11100000,%00111000   ; ###.......###...
+            DEFB    %11100000,%00111000   ; ###.......###...
+            DEFB    %11100000,%00111000   ; ###.......###...
+            DEFB    %01110000,%01110000   ; .###.....###....
+            DEFB    %01110000,%01110000   ; .###.....###....
+            DEFB    %00111000,%11100000   ; ..###...###.....
+            DEFB    %00111000,%11100000   ; ..###...###.....
+            DEFB    %00011101,%11000000   ; ...###.###......
+            DEFB    %00011101,%11000000   ; ...###.###......
+            DEFB    %00001111,%10000000   ; ....#####.......
+            DEFB    %00001111,%10000000   ; ....#####.......
+            DEFB    %00000111,%00000000   ; .....###........
+
 ; ---- textos ---------------------------------------------------------
 txt_poli:        DEFB "POLI:",0
 txt_ladron:      DEFB "LADRON:",0
-txt_titulo:      DEFB "POLICIA Y LADRON",0
+txt_juego:       DEFB "BALAVA",0
+txt_op1:         DEFB "1  JUGAR",0
+txt_op2:         DEFB "2  CONTROLES",0
+txt_pulsa:       DEFB "PULSA 1 O 2",0
+txt_autor:       DEFB "(C) 2026  AMDLABS",0
+txt_controles:   DEFB "CONTROLES",0
 txt_j1:          DEFB "JUGADOR 1 - POLICIA",0
 txt_j1b:         DEFB "Q=ARRIBA  A=ABAJO",0
 txt_j1c:         DEFB "V=DISPARO",0
@@ -756,7 +992,7 @@ txt_j2:          DEFB "JUGADOR 2 - LADRON",0
 txt_j2b:         DEFB "P=ARRIBA  L=ABAJO",0
 txt_j2c:         DEFB "ESPACIO=DISPARO",0
 txt_reglas:      DEFB "5 IMPACTOS PARA GANAR",0
-txt_enter:       DEFB "PULSA ENTER PARA JUGAR",0
+txt_tecla:       DEFB "PULSA CUALQUIER TECLA",0
 txt_gana_poli:   DEFB "GANA EL POLICIA",0
 txt_gana_ladron: DEFB "GANA EL LADRON",0
 txt_final:       DEFB "RESULTADO",0
