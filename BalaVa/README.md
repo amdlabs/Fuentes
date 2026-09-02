@@ -239,7 +239,9 @@ bandas negras arriba y abajo:
 Después el **funeral**: suena la **marcha fúnebre** de Chopin (1839, dominio
 público) mientras la carreta entra por la izquierda, se detiene junto al cuerpo,
 carga el ataúd y se lo lleva fuera de la pantalla. Son unos cinco segundos. Al volver a
-la partida los dos recargan el cinto: **ocho balas otra vez** para cada uno.
+la partida los dos recargan el cinto: **ocho balas otra vez** para cada uno, y
+las recámaras se vacían: si no, las balas que quedaran volando seguirían su
+camino al reanudar y matarían otra vez nada más empezar.
 
 El decorado no se pierde: antes de despejar la pantalla se guardan los trozos de
 memoria de vídeo del decorado y los barriles, y al acabar se reponen **con los
@@ -327,6 +329,7 @@ agujeros que ya tuvieran**.
 ## Ficheros
 
     src/balava.asm          codigo fuente Z80 (pasmo)
+    .claude/skills/zx-spectrum/  lo aprendido aqui, para el proximo juego
     web/z80.js              nucleo Z80 + ULA + AY en JavaScript
     web/balava.html         plantilla de la pagina del emulador
     arte/autor.png          la foto del autor, para los creditos
@@ -345,4 +348,4 @@ agujeros que ya tuvieran**.
 
 ---
 
-(C) 2026 Alejandro Martinez
+(C) 2026 **Kbza Soft** — Alejandro Martinez

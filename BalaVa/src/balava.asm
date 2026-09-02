@@ -100,10 +100,10 @@ MQ_ALTO     EQU 16                  ; dos filas: el juego de caracteres, doble
 ; --- memoria de trabajo (fuera del binario) --------------------------
 BUF_TEXTO   EQU 0xC000              ; la marquesina, 16 filas de 32 bytes
 BUF_VENTANA EQU 0xC200              ; y la franja de foto de debajo, otro tanto
-BUF_CABALLO EQU 0xC000              ; el caballo: tres posturas del paso, cada
+BUF_CABALLO EQU 0xC400              ; el caballo: tres posturas del paso, cada
 BUF_QUIETO  EQU BUF_CABALLO+CAB_BYTES*8*CAB_PASOS   ; una en ocho desplazamientos
-BUF_ESPEJO  EQU BUF_QUIETO+CAB_BYTES                ; (se rehacen en cada partida,
-BUF_CARRETA EQU 0xE000              ; asi comparten sitio con los creditos)
+BUF_ESPEJO  EQU BUF_QUIETO+CAB_BYTES                ; (por encima de los creditos:
+BUF_CARRETA EQU 0xE000              ; nada de compartir sitio con nadie)
 BUF_ATAUD   EQU BUF_CARRETA+CARRETA_BYTES*8
 BALAZO_ANCHO EQU 5                  ; la bala en primer plano, con margenes
 BALAZO_ALTO EQU 8
@@ -183,8 +183,6 @@ partida:
             xor     a
             ld      (puntos1),a
             ld      (puntos2),a
-            ld      (b1_act),a
-            ld      (b2_act),a
 
             call    prepara_caballo         ; cada partida, un caballo nuevo
             call    coloca_barriles         ; y los barriles en otro sitio
@@ -222,11 +220,11 @@ bucle:
             call    actualiza_carreta
 
             ld      a,(puntos1)
-            cp      PUNTOS_WIN
-            jr      z,gana_poli
+            cp      PUNTOS_WIN              ; NC, no Z: si por lo que sea se
+            jr      nc,gana_poli            ; salta un tanto, tambien acaba
             ld      a,(puntos2)
             cp      PUNTOS_WIN
-            jp      z,gana_ladron
+            jp      nc,gana_ladron
             call    quedan_balas            ; ¿se acabo la municion?
             jr      nz,bucle
             ld      a,(puntos1)
@@ -666,26 +664,9 @@ ic_ve:
             halt
             call    ay_tick
             djnz    ic_ve
-            ld      a,(b1_act)              ; fuera las balas que quedaran
-            or      a
-            jr      z,ic_bala2
-            ld      a,(b1_y)
-            ld      b,a
-            ld      a,(b1_x)
-            call    bala_xor
-            xor     a
-            ld      (b1_act),a
-ic_bala2:
-            ld      a,(b2_act)
-            or      a
-            jr      z,ic_funeral
-            ld      a,(b2_y)
-            ld      b,a
-            ld      a,(b2_x)
-            call    bala_xor
-            xor     a
-            ld      (b2_act),a
-ic_funeral:
+            call    borra_balas             ; las que quedaran en el aire, fuera
+            call    limpia_balas            ; y las dos recamaras, a cero: si no,
+ic_funeral:                                 ; al volver siguen volando y matan
             call    guarda_decorado         ; con los agujeros de ahora
             ld      hl,cancion_funeral      ; la marcha entra ya con el cine
             call    pon_cancion
@@ -1712,6 +1693,7 @@ acab_pon:
             ld      (hl),0
 acab_pisa:
             call    caballo_pisa            ; ¿se lleva a alguien por delante?
+            jr      c,acab_atropella
             call    dibuja_caballo
             ld      a,(cab_estado)          ; solo paseando se le ocurren cosas
             or      a
@@ -1721,6 +1703,12 @@ acab_pisa:
             ret     nc
             ld      a,CAB_PASTA
             jp      cab_quieta
+
+acab_atropella:                             ; lo ha pisado: como aqui se entro
+            ld      a,(cab_dir)             ; con un CALL desde el bucle, basta
+            or      a                       ; con saltar, que el RET del impacto
+            jp      z,impacto_ladron        ; devuelve al bucle
+            jp      impacto_poli
 
 acab_sale:                                  ; se sale por un lado
             call    borra_caballo
@@ -1822,36 +1810,41 @@ cab_estampida:
 
 ;---------------------------------------------------------------------
 ; caballo_pisa - si embiste y alcanza a un pistolero que no se ha
-;   apartado a tiempo, se lo lleva por delante
+;   apartado a tiempo, se lo lleva por delante.
+;   salida: acarreo puesto = lo ha pisado
 ;---------------------------------------------------------------------
 caballo_pisa:
             ld      a,(cab_estado)
             cp      CAB_EMBISTE
-            ret     nz
+            jr      z,cpisa_lanzado
+cpisa_no:
+            or      a                       ; sin acarreo: no ha pisado a nadie
+            ret
+cpisa_lanzado:
             ld      a,(cab_dir)
             or      a
             jr      nz,cpisa_izq
-            ld      a,(cab_x)               ; hacia el bandido
+            ld      a,(cab_x)               ; embiste hacia el bandido
             add     a,CAB_MORRO
             cp      COL_P2*8
-            ret     c
+            jr      c,cpisa_no              ; todavia no ha llegado
             ld      a,(p2_y)
             add     a,ALTO_SPR-1
             cp      CAB_Y
-            ret     c                       ; se ha apartado a tiempo
-            pop     hl                      ; no vuelve a actualiza_caballo
-            jp      impacto_ladron
+            jr      c,cpisa_no              ; se ha apartado a tiempo
+            scf
+            ret
 cpisa_izq:
-            ld      a,(cab_x)               ; hacia el sheriff
+            ld      a,(cab_x)               ; embiste hacia el sheriff
             add     a,8
             cp      COL_P1*8+ANCHO_JUG*8
-            ret     nc
+            jr      nc,cpisa_no
             ld      a,(p1_y)
             add     a,ALTO_SPR-1
             cp      CAB_Y
-            ret     c
-            pop     hl
-            jp      impacto_poli
+            jr      c,cpisa_no
+            scf
+            ret
 
 ;---------------------------------------------------------------------
 ; dibuja_caballo / borra_caballo
@@ -3669,7 +3662,7 @@ txt_op2:         DEFB "2  DOS JUGADORES",0
 txt_op3:         DEFB "3  CONTROLES",0
 txt_op4:         DEFB "4  CREDITOS",0
 txt_pulsa:       DEFB "PULSA 1, 2, 3 O 4",0
-txt_autor:       DEFB "(C) 2026 ALEJANDRO MARTINEZ",0
+txt_autor:       DEFB "(C) 2026 KBZA SOFT",0
 txt_controles:   DEFB "CONTROLES",0
 txt_j1:          DEFB "JUGADOR 1 - SHERIFF",0
 txt_j1b:         DEFB "Q=ARRIBA  A=ABAJO",0
@@ -3684,7 +3677,7 @@ txt_gana_poli:   DEFB "GANA EL SHERIFF",0
 txt_gana_ladron: DEFB "GANA EL BANDIDO",0
 txt_final:       DEFB "RESULTADO",0
 txt_empate:      DEFB "SIN BALAS: EMPATE",0
-txt_marquesina:  DEFB "BALAVA   ***   DESARROLLADO POR ALEJANDRO MARTINEZ   ***   MUSICA: ALEJANDRO MARTINEZ   ***   ZX SPECTRUM 128K, 2026   ***   PULSA UNA TECLA PARA VOLVER   ***   ",0
+txt_marquesina:  DEFB "BALAVA   ***   UN JUEGO DE KBZA SOFT   ***   DESARROLLADO POR ALEJANDRO MARTINEZ   ***   MUSICA: ALEJANDRO MARTINEZ   ***   (C) 2026 KBZA SOFT   ***   ZX SPECTRUM 128K   ***   PULSA UNA TECLA PARA VOLVER   ***   ",0
 
 spr_muerto:              ; el pistolero abatido, 24x16
             DEFB    %00000000, %00000000, %00000000   ; ........................
@@ -4295,12 +4288,6 @@ fx_t:            DEFB 0
 fx_vol:          DEFB 0
 p1_y:            DEFB P1_INI_Y
 p2_y:            DEFB P2_INI_Y
-b1_x:            DEFB 0
-b1_y:            DEFB 0
-b1_act:          DEFB 0
-b2_x:            DEFB 0
-b2_y:            DEFB 0
-b2_act:          DEFB 0
 puntos1:         DEFB 0
 puntos2:         DEFB 0
 

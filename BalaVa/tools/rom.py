@@ -21,12 +21,28 @@ RETOQUES = {
 }
 
 
+# El manejador de la interrupcion imita lo que hace el de la ROM de verdad:
+# apila cuatro parejas de registros, lleva la cuenta de FRAMES y escribe
+# LAST-K y KSTATE0 *a traves de IY*, que es como los toca la ROM.  Asi, si el
+# juego se llevara IY por delante o dejara el SP donde no debe, se nota aqui en
+# vez de solo en una maquina real.
+MANEJADOR = bytes([
+    0xF5, 0xE5, 0xC5, 0xD5,             # push af / hl / bc / de
+    0x2A, 0x78, 0x5C,                   # ld hl,(FRAMES)
+    0x23,                               # inc hl
+    0x22, 0x78, 0x5C,                   # ld (FRAMES),hl
+    0xFD, 0x36, 0x08, 0x20,             # ld (iy+0x08),' '   LAST-K
+    0xFD, 0x36, 0x00, 0xFF,             # ld (iy+0x00),0xFF  KSTATE0
+    0xD1, 0xC1, 0xE1, 0xF1,             # pop de / bc / hl / af
+    0xFB, 0xC9,                         # ei / ret
+])
+
+
 def crea_rom():
-    """ROM minima: DI en 0x0000, EI/RET en 0x0038 y un font 8x8 en 0x3D00."""
+    """ROM minima: DI en 0x0000, el manejador en 0x0038 y un font en 0x3D00."""
     rom = bytearray(0x4000)
     rom[0x0000] = 0xF3
-    rom[0x0038] = 0xFB
-    rom[0x0039] = 0xC9
+    rom[0x0038:0x0038 + len(MANEJADOR)] = MANEJADOR
     fuente = ImageFont.truetype(TTF, 9)
     for c in range(32, 128):
         img = Image.new('1', (8, 8), 0)

@@ -229,7 +229,7 @@ def compon():
 
     # ---- textos ------------------------------------------------------
     p.texto('ZX SPECTRUM 128K', 8, 4, BLANCO)
-    p.texto('A. MARTINEZ 2026', 136, 4, BLANCO)
+    p.texto('KBZA SOFT 2026', 144, 4, BLANCO)
     p.texto('1 O 2 JUGADORES - PULSA UNA TECLA', 24, 185, BLANCO, tam=9)
     return p
 
