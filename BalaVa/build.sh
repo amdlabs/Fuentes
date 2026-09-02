@@ -8,3 +8,4 @@ if [ ! -f dist/balava.scr ] || [ tools/pantalla_carga.py -nt dist/balava.scr ]; 
 fi
 pasmo --bin --alocal src/balava.asm build/balava.bin build/balava.sym
 python3 tools/make_z80.py build/balava.bin dist/balava.z80 --pantalla dist/balava.scr
+python3 tools/web.py                     # pagina autocontenida del emulador

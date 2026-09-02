@@ -12,15 +12,15 @@ movimiento, limites, disparos, impactos, esquivas, marcador y fin de partida.
 """
 
 import argparse
+import importlib.util
 import os
 import sys
 
 import z80
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TICKS_FRAME = 69888                     # T-estados de un fotograma del 48K
-TTF = '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf'
 
 FILAS_TECLADO = {                       # semi-fila -> teclas (bit 0 .. bit 4)
     0xFE: ['CAPS', 'Z', 'X', 'C', 'V'],
@@ -38,23 +38,15 @@ def dir_pantalla(y, col=0):
     return 0x4000 | ((y & 0xC0) << 5) | ((y & 0x07) << 8) | ((y & 0x38) << 2) | col
 
 
-def crea_rom():
-    """ROM minima: DI en 0x0000, EI/RET en 0x0038 y un font 8x8 en 0x3D00."""
-    rom = bytearray(0x4000)
-    rom[0x0000] = 0xF3
-    rom[0x0038] = 0xFB
-    rom[0x0039] = 0xC9
-    fuente = ImageFont.truetype(TTF, 9)
-    for c in range(32, 128):
-        img = Image.new('1', (8, 8), 0)
-        ImageDraw.Draw(img).text((-1, -1), chr(c), font=fuente, fill=1)
-        for fila in range(8):
-            b = 0
-            for col in range(8):
-                if img.getpixel((col, fila)):
-                    b |= 0x80 >> col
-            rom[0x3C00 + c * 8 + fila] = b
-    return bytes(rom)
+def _modulo_rom():
+    ruta = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'rom.py')
+    spec = importlib.util.spec_from_file_location('rom', ruta)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+crea_rom = _modulo_rom().crea_rom
 
 
 class Spectrum(z80.Z80Machine):

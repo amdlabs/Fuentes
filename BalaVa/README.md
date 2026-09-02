@@ -9,8 +9,34 @@ delante de cada pistolero una **caja** tras la que parapetarse, que se va
 rompiendo a tiros tramo a tramo. Fondo amarillo, sprites en negro. Gana el
 primero que consiga 5 impactos.
 
-    dist/balava.z80    <- snapshot listo para cargar en un emulador
-    dist/balava.scr    <- la pantalla de carga suelta (SCREEN$ de 6912 bytes)
+    dist/balava.z80        <- snapshot listo para cargar en un emulador
+    dist/balava.scr        <- la pantalla de carga suelta (SCREEN$ de 6912 bytes)
+    dist/balava-web.html   <- pagina autocontenida: el juego con su emulador dentro
+
+## Jugar en el navegador
+
+`dist/balava-web.html` es una sola pagina, sin descargas ni dependencias: lleva
+dentro un **nucleo Z80 escrito en JavaScript** (`web/z80.js`), el binario del
+juego, la pantalla de carga y el juego de caracteres, todo en base64. Se abre y
+se juega.
+
+La ROM es **sintetica**: el juego no llama a ninguna rutina del sistema, asi que
+basta con un manejador minimo de la interrupcion en `0x0038` y un juego de
+caracteres 8x8 en `0x3D00`; no hace falta ninguna imagen de ROM con derechos.
+
+Que el emulador de JavaScript se porta igual que el de referencia no es una
+suposicion: `tools/estado.py` guarda el guion de teclas y, en once puntos, la
+firma SHA-1 de la pantalla y las variables del juego que deja el emulador de
+referencia; `node tools/probar_web.js build/guion.json` repite el mismo guion
+con el nucleo de JavaScript y compara. Ahora mismo: **538 fotogramas sin una
+sola diferencia**.
+
+## Grabar una partida
+
+`tools/grabar.py` juega una partida guionizada y saca un MP4 con imagen y el
+sonido del altavoz (necesita `imageio-ffmpeg`):
+
+    python3 tools/grabar.py --salida balava.mp4
 
 ## Pantalla de carga
 
@@ -151,9 +177,16 @@ hace falta ninguna imagen de ROM con derechos.
 
 ## Ficheros
 
-    src/balava.asm         codigo fuente Z80 (pasmo)
+    src/balava.asm          codigo fuente Z80 (pasmo)
+    web/z80.js              nucleo Z80 + ULA en JavaScript
+    web/balava.html         plantilla de la pagina del emulador
     tools/pantalla_carga.py compone la pantalla de carga sin colour clash
-    tools/make_z80.py      genera el snapshot .z80 de 48K a partir del binario
-    tools/probar.py        pruebas sobre un Z80 emulado
-    build.sh               ensambla y genera dist/balava.z80
-    dist/                  snapshot y pantalla de carga listos para usar
+    tools/rom.py            la ROM sintetica (interrupcion y juego de caracteres)
+    tools/make_z80.py       genera el snapshot .z80 de 48K a partir del binario
+    tools/web.py            arma dist/balava-web.html con todo dentro
+    tools/probar.py         pruebas sobre el Z80 de referencia
+    tools/estado.py         guion y estado esperado para comparar emuladores
+    tools/probar_web.js     repite el guion con el nucleo de JavaScript
+    tools/grabar.py         graba un video de una partida
+    build.sh                ensambla y genera todo lo de dist/
+    dist/                   snapshot, pantalla de carga y pagina web
