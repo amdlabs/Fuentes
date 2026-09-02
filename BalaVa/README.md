@@ -3,11 +3,12 @@
 Duelo en el oeste para dos jugadores, en ensamblador Z80 para ZX Spectrum 48K.
 El sheriff (izquierda) y el bandido (derecha) se disparan de un lado a otro de
 la pantalla: solo pueden moverse **arriba y abajo** para esquivar las balas del
-contrario. En medio hay una carreta y dos cactus que **paran los disparos**, un
-**caracol gigante** que cruza el campo despacio y va tapando calles a su paso, y
-delante de cada pistolero una **caja** tras la que parapetarse, que se va
-rompiendo a tiros tramo a tramo. Fondo amarillo, sprites en negro. Gana el
-primero que consiga 5 impactos.
+contrario. En medio hay una carreta y dos cactus, un **caracol gigante** que
+pasea por la parte baja, y delante de cada pistolero una **caja** tras la que
+parapetarse. Todo eso para las balas, y cada bala **arranca unos pocos píxeles**
+de lo que toca: a base de tiros se van abriendo troneras por donde luego pasan
+los disparos. Al que le dan **cae muerto** y hay funeral. Fondo amarillo,
+sprites en negro. Gana el primero que consiga 5 impactos.
 
     dist/balava.z80        <- snapshot listo para cargar en un emulador
     dist/balava.scr        <- la pantalla de carga suelta (SCREEN$ de 6912 bytes)
@@ -120,15 +121,30 @@ hace falta ninguna imagen de ROM con derechos.
 
 ## El campo de juego
 
-- **Carreta y cactus**: fijos, paran las balas.
-- **Caracol gigante**: cruza el campo de lado a lado a un píxel cada tres
-  fotogramas (unos 15 segundos por travesía, más o menos media jugada), da la
-  vuelta al llegar al final y también para las balas. Como se mueve, la calle
-  que tapa va cambiando.
-- **Cajas**: una delante de cada pistolero, de cuatro tramos. Cada impacto se
-  lleva un tramo por delante; por el hueco que queda ya pasan las balas. Sirven
-  de parapeto, pero también tapan los propios disparos, así que abrirse una
-  tronera cuesta munición.
+- **Todo se rompe**: no hay tabla de obstáculos ni estados de daño. Antes de
+  dibujarse, cada bala mira los píxeles que tiene delante; si hay algo, se queda
+  ahí y arranca un boquete de 6x4 píxeles. Así la carreta, los cactus y las
+  cajas se van perforando poco a poco, y una bala nunca atraviesa dos cosas: se
+  para en la primera.
+- **Cajas**: una delante de cada pistolero. Sirven de parapeto, pero también
+  tapan los propios disparos, así que abrirse una tronera cuesta munición.
+- **Caracol gigante**: pasea por la parte baja del campo. Avanza al píxel,
+  rebota en los lados y cada tantos pasos cambia de altura y de velocidad (lo
+  decide un registro de desplazamiento realimentado), así que la calle que tapa
+  va cambiando y nunca repite recorrido.
+- **Balas cruzadas**: dos balas que se encuentran de frente se anulan.
+
+## El funeral
+
+Cuando una bala alcanza a un pistolero, **cae muerto** en el sitio y se queda a
+la vista un segundo, para que se entienda de qué murió. Después se para la
+jugada: suena la **marcha fúnebre** de Chopin (1839, dominio público) mientras
+la carreta entra por la izquierda, se detiene junto al cuerpo, carga el ataúd y
+se lo lleva fuera de la pantalla. Son unos cinco segundos.
+
+El decorado no se pierde: antes de despejar la pantalla se guardan los trozos de
+memoria de vídeo del decorado y las cajas, y al acabar se reponen **con los
+agujeros que ya tuvieran**.
 
 ## Cómo funciona
 
@@ -152,25 +168,29 @@ hace falta ninguna imagen de ROM con derechos.
   lleva un byte en blanco a cada lado, así que la columna que abandona queda
   borrada sola y no deja rastro. Las balas usan la misma idea en pequeño: el
   patrón de 4 píxeles se desplaza dentro de una pareja de bytes.
-- **Decorado**: la carreta y los dos cactus son obstáculos de verdad. La tabla
-  `obstaculos` guarda un rectángulo (x0, x1, y0, y1) por pieza y `choca_obstaculo`
-  comprueba cada bala contra ella **antes** de dibujarla, así que la bala se
-  detiene en el borde sin llegar a pisar el decorado (que se dibuja una sola vez
-  al empezar la partida y nunca hay que repintarlo).
-- **Balas**: bloques de 4x2 píxeles que avanzan 4 píxeles por fotograma y se
-  dibujan con XOR, por lo que se borran solas y pueden cruzarse sin estropear
-  el fondo. Cuando una bala llega a la columna del rival se comprueba si su
-  altura cae dentro de los 32 píxeles del sprite.
+- **Choques**: no hay tablas de rectángulos. `mira_bala` lee los píxeles de la
+  memoria de vídeo donde va a caer la bala y, si hay algo, `abre_agujero` los
+  borra con un AND: un puñado de bytes que valen igual para el decorado, las
+  cajas y el caracol, y que hacen que todo se perfore poco a poco.
+- **Balas**: bloques de 4x2 píxeles que avanzan 3 píxeles por fotograma y se
+  dibujan con XOR, por lo que se borran solas. Cuando una bala llega a la
+  columna del rival se comprueba si su altura cae dentro de los 32 píxeles del
+  sprite; si cae, ese pistolero se va al funeral.
+- **El funeral por dentro**: `guarda_decorado` copia a un buffer los trozos de
+  memoria de vídeo del decorado y las cajas, `limpia_campo` despeja el terreno,
+  la escena se anima al ritmo de la música y `restaura_decorado` lo repone todo
+  con sus agujeros.
 - **Colores**: toda el área de atributos a `PAPER 6 / INK 0` (`0x30`) y borde
   amarillo, así que no hay *attribute clash* posible.
 - **Teclado**: lectura directa del puerto `0xFE` por semifilas; el menú lee las
   ocho a la vez con el byte alto a 0 para el «pulsa cualquier tecla».
 - **Música**: el altavoz se conmuta con un bucle de retardo, así que un periodo
   completo son `32*C + 60` T-estados y la nota sale a `3.500.000 / (32*C + 60)`
-  Hz. La melodía se guarda como (periodo, ciclos por tick, ticks) y suena en
-  trozos de 60 ms para que el menú pueda mirar el teclado entre uno y otro. Las
-  interrupciones se desactivan mientras suena, que si no la RST 38 desafina las
-  notas.
+  Hz. Cada melodía se guarda como (periodo, ciclos por tick, ticks) y suena en
+  trozos de 60 ms: en el menú sirven para mirar el teclado entre nota y nota, y
+  en el funeral marcan el paso de la carreta. Las interrupciones se desactivan
+  mientras suena, que si no la RST 38 desafina las notas. La marcha fúnebre va
+  una octava alta porque el bucle de retardo no baja de 426 Hz.
 - **Ritmo**: `HALT` en el bucle principal sincroniza el juego a los 50 Hz de la
   interrupción, y los textos se imprimen con el juego de caracteres de la ROM
   (`0x3C00 + código*8`) sin depender de las rutinas de canales del BASIC.
