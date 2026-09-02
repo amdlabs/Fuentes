@@ -1,4 +1,20 @@
-# Fuentes · API Flow Tester
+# Fuentes
+
+Dos proyectos, cada uno en su carpeta:
+
+- **[`BalaVa/`](BalaVa/)** — duelo del oeste para **ZX Spectrum 128K** en
+  ensamblador Z80. El sheriff y el bandido se disparan de lado a lado y solo
+  pueden moverse arriba y abajo; ocho balas cada uno, hasta cuatro en el aire a
+  la vez, barriles de whisky y cactus que se van perforando a tiros, y un
+  **caballo suelto** que pasea, pasta, se encabrita al oír un tiro y embiste al
+  que le dispara. Al que le dan se lo llevan con cinemática a pantalla completa y
+  funeral. Se juega a uno (con la máquina llevando al bandido) o a dos, con
+  música de tres voces por el chip AY. Trae su propio emulador en JavaScript, así
+  que se juega abriendo `BalaVa/dist/balava-web.html`. *(C) 2026 Kbza Soft.*
+- **[`IVZApiFlowVisualBuilder/`](IVZApiFlowVisualBuilder/)** — el API Flow Tester
+  que se describe aquí abajo.
+
+## API Flow Tester
 
 Herramienta web para **testear APIs de forma visual**: creás elementos en pantalla
 (rectángulos, rombos, círculos), cada uno representa un llamado HTTP (GET / POST /

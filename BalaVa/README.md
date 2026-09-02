@@ -11,12 +11,16 @@ la anterior. Cuando a los dos se les acaba la munición se termina la partida y
 solo queda esquivar hasta entonces.
 
 Entre medias hay un **barril de whisky** delante de cada uno (a una altura
-distinta cada partida, nunca en la misma línea de tiro), dos cactus, un
-**caballo suelto** que pasea por la parte baja y una **carreta que sube por el
-centro** hasta perderse por arriba. Todo eso para las balas, y cada bala
-**arranca unos pocos píxeles** de lo que toca: a base de tiros se van abriendo
-troneras por donde luego pasan los disparos, y una bala nunca atraviesa dos
-cosas.
+distinta cada partida, nunca en la misma línea de tiro), dos cactus y una
+**carreta que sube por el centro** hasta perderse por arriba. Todo eso para las
+balas, y cada bala **arranca unos pocos píxeles** de lo que toca: a base de tiros
+se van abriendo troneras por donde luego pasan los disparos, y una bala nunca
+atraviesa dos cosas.
+
+Y por abajo anda **un caballo suelto**, que no es decorado: camina, se para a
+pastar, se **encabrita** al oír un tiro y, si le entra una bala, o **embiste al
+que le disparó** —y al que no se aparta a tiempo se lo lleva por delante— o sale
+de estampida. De las dos maneras se pierde de vista hasta la partida siguiente.
 
 Al que le dan **se dobla, cae al suelo** y arranca la **cinemática**: pantalla
 completa, bandas negras de cine, la bala a cámara lenta, primer plano del
@@ -265,7 +269,7 @@ agujeros que ya tuvieran**.
 - **Movimiento fino**: todo se mueve a nivel de píxel, nunca a saltos de
   carácter. En vertical basta con cambiar la fila de arranque (un píxel por
   fotograma). En horizontal hace falta desplazar los bytes: al arrancar,
-  `genera_desplazados` construye en RAM las **ocho copias** del caracol, la
+  `genera_desplazados` construye en RAM las **ocho copias** de la
   carreta, el ataúd y la bala del primer plano (una por cada desplazamiento de 0
   a 7 píxeles) rotando los bytes de cada fila con `srl`/`rr`, y luego mover un
   píxel es solo elegir la copia que toca. El sprite lleva un byte en blanco a

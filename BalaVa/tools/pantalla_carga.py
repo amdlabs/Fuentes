@@ -9,7 +9,7 @@ misma celda el generador lo canta y no escribe nada.
 
     python3 tools/pantalla_carga.py [--png preview.png]
 
-Los dibujos (logotipo, pistoleros, caracol, cactus) se leen del propio
+Los dibujos (logotipo, pistoleros, caballo, cactus) se leen del propio
 src/balava.asm, de los comentarios en ASCII que acompañan a cada DEFB, para
 no tener el arte duplicado en dos sitios.
 """
