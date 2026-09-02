@@ -177,7 +177,7 @@ def compon():
     p.dibuja(caracol, 96, 136, NEGRO)
 
     # ---- textos ------------------------------------------------------
-    p.texto('ZX SPECTRUM 48K', 8, 4, BLANCO)
+    p.texto('ZX SPECTRUM 128K', 8, 4, BLANCO)
     p.texto('A. MARTINEZ 2026', 136, 4, BLANCO)
     p.texto('2 JUGADORES - PULSA UNA TECLA', 40, 185, BLANCO, tam=9)
     return p
