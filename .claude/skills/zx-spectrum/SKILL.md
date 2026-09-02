@@ -177,6 +177,15 @@ pruebas**.
 - **`SP` como puntero de lectura.** `pop` trae dos bytes en 10 T-estados y es la
   manera mas rapida de leer un bufer, pero **hay que quitar las interrupciones
   mientras dura**: con SP dentro del bufer, una RST 38 escribe justo ahi.
+- **Rutinas que se llevan por delante los contadores de quien las llama.** Una
+  rutinita de nada (dar la vuelta a los bits de un byte) que usa `B` y `C` de
+  apoyo, llamada desde un bucle doble que lleva los contadores justo en `B` y en
+  `C`: el bucle se descontrola y escribe miles de bytes por toda la RAM, y la
+  maquina se cuelga o se reinicia mucho despues, en otro sitio. **Toda rutina
+  auxiliar tiene que apilar lo que toca** (`push bc` / `pop bc`), y merece la pena
+  dejar escrito en su comentario que registros respeta. Un buen chivato en las
+  pruebas: comparar la zona de dibujos y de codigo con la del binario recien
+  ensamblado; si un byte cambia, alguien esta escribiendo donde no debe.
 - **Variables muertas.** Al pasar de "una bala" a "un juego de cuatro balas",
   quedaron unas variables sueltas que ya no usaba nadie; la limpieza tras cada
   muerte seguia poniendolas a cero y las balas de verdad seguian volando. Cuando

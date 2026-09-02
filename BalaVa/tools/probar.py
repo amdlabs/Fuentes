@@ -414,6 +414,10 @@ def main():
             'barril del sheriff dibujado')
     P.check(m.bloque(BARRIL2_COL, val('barril2_y'), 32, 2) == barril,
             'barril del bandido dibujado')
+    binario = open(args.bin, 'rb').read()
+    dibujos = lambda: all(m.peek(a) == binario[a - 0x8000]
+                          for a in range(sim['spr_poli'], sim['logo_letras']))
+    P.check(dibujos(), 'los dibujos siguen intactos en memoria')
     P.check(val('cab_estado') != 5, 'el caballo anda suelto por el campo')
     x0 = val('cab_x')
     posturas = set()
@@ -558,6 +562,9 @@ def main():
     P.check(m.bloque(BARRIL1_COL, val('barril1_y'), 32, 2) == barril,
             'y el barril entero otra vez')
     P.check(val('musica') == 0, 'y se vuelve a jugar en silencio')
+    P.check(all(m.peek(a) == binario[a - 0x8000]
+                for a in range(sim['spr_poli'], sim['logo_letras'])),
+            'y nadie ha escrito donde estan los dibujos')
     captura(m, '9-vuelta.png')
 
     # ---------------------------------------------------------------

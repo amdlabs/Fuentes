@@ -1641,7 +1641,10 @@ cfu_sig:
             ld      hl,BUF_ESPEJO
             ret
 
+;   Guarda BC: quien llama lleva ahi los contadores de fila y de byte, y
+;   este bucle usa las dos mitades.
 invierte_bits:
+            push    bc
             ld      b,8
             ld      c,0
 ib_bit:
@@ -1649,6 +1652,7 @@ ib_bit:
             rl      c                       ; y entra por arriba
             djnz    ib_bit
             ld      a,c
+            pop     bc
             ret
 
 ;---------------------------------------------------------------------
