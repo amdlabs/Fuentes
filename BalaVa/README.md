@@ -1,16 +1,19 @@
 # BalaVa — ZX Spectrum 48K
 
-Juego de dos jugadores en ensamblador Z80 para ZX Spectrum 48K. El policía
-(izquierda) y el ladrón (derecha) se disparan de un lado a otro de la pantalla:
-solo pueden moverse **arriba y abajo** para esquivar las balas del contrario.
-Fondo amarillo, sprites en negro. Gana el primero que consiga 5 impactos.
+Duelo en el oeste para dos jugadores, en ensamblador Z80 para ZX Spectrum 48K.
+El sheriff (izquierda) y el bandido (derecha) se disparan de un lado a otro de
+la pantalla: solo pueden moverse **arriba y abajo** para esquivar las balas del
+contrario. En medio hay una carreta y dos cactus que **paran los disparos**, así
+que además de esquivar hay que buscar la calle libre. Fondo amarillo, sprites en
+negro. Gana el primero que consiga 5 impactos.
 
     dist/balava.z80    <- snapshot listo para cargar en un emulador
 
 ## Menú
 
 Arranca en un menú de la época: recuadro de pantalla, banda negra con el
-logotipo **BALAVA** en hueco, los dos personajes apuntándose y dos opciones.
+logotipo **BALAVA** en hueco, los dos pistoleros apuntándose entre los cactus y
+dos opciones.
 
     1  JUGAR
     2  CONTROLES
@@ -23,8 +26,8 @@ cualquier tecla devuelve al menú.
 
 | | Arriba | Abajo | Disparo |
 |---|---|---|---|
-| Jugador 1 — Policía (izquierda) | `Q` | `A` | `V` |
-| Jugador 2 — Ladrón (derecha) | `P` | `L` | `ESPACIO` |
+| Jugador 1 — Sheriff (izquierda) | `Q` | `A` | `V` |
+| Jugador 2 — Bandido (derecha) | `P` | `L` | `ESPACIO` |
 
 Cada jugador solo puede tener una bala en el aire: hasta que la suya no llega
 al otro lado, no puede volver a disparar.
@@ -70,13 +73,20 @@ hace falta ninguna imagen de ROM con derechos.
 - **Logotipo**: banda negra de 32 píxeles de alto sobre la que las letras
   (16x14 píxeles, tabla `logo_letras`) se dibujan con XOR, así que quedan en
   hueco en amarillo sin necesidad de una segunda imagen.
-- **Sprites**: 8x16 píxeles, uno por columna de caracteres (2 y 29). Al moverse
-  se redibujan y se borran solo las 2 filas que dejan libres, así que no
-  parpadean ni hace falta doble búfer.
+- **Sprites**: los pistoleros miden 24x32 píxeles (3 columnas de caracteres por
+  32 filas) y se vuelcan con `dibuja_bloque`, una rutina genérica que sirve
+  igual para el decorado (cactus de 16x32 y carreta de 24x28). Al moverse se
+  redibujan y se borran solo las 2 filas que dejan libres, así que no parpadean
+  ni hace falta doble búfer.
+- **Decorado**: la carreta y los dos cactus son obstáculos de verdad. La tabla
+  `obstaculos` guarda un rectángulo (x0, x1, y0, y1) por pieza y `choca_obstaculo`
+  comprueba cada bala contra ella **antes** de dibujarla, así que la bala se
+  detiene en el borde sin llegar a pisar el decorado (que se dibuja una sola vez
+  al empezar la partida y nunca hay que repintarlo).
 - **Balas**: bloques de 4x2 píxeles que avanzan 4 píxeles por fotograma y se
   dibujan con XOR, por lo que se borran solas y pueden cruzarse sin estropear
   el fondo. Cuando una bala llega a la columna del rival se comprueba si su
-  altura cae dentro de los 16 píxeles del sprite.
+  altura cae dentro de los 32 píxeles del sprite.
 - **Colores**: toda el área de atributos a `PAPER 6 / INK 0` (`0x30`) y borde
   amarillo, así que no hay *attribute clash* posible.
 - **Teclado**: lectura directa del puerto `0xFE` por semifilas; el menú lee las
