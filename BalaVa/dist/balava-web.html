@@ -155,7 +155,7 @@
         <span style="background:var(--cian)"></span>
       </div>
     </div>
-    <p class="lema">Duelo en el oeste para uno o dos jugadores. ZX Spectrum 128K, 6 KB de codigo
+    <p class="lema">Duelo en el oeste para uno o dos jugadores. ZX Spectrum 128K, 13 KB de codigo
       maquina y musica de tres voces por el AY, corriendo aqui sobre un Z80 emulado en JavaScript.</p>
   </header>
 
@@ -183,6 +183,7 @@
       <button data-tecla="1">1 UN JUGADOR</button>
       <button data-tecla="2">2 DOS JUGADORES</button>
       <button data-tecla="3">3 CONTROLES</button>
+      <button data-tecla="4">4 CREDITOS</button>
     </div>
   </div>
 
@@ -209,7 +210,8 @@
       de lo que toca, asi que los barriles y los cactus se van perforando; los barriles salen a
       suertes y nunca a la misma altura. El <b>caracol</b> pasea por abajo y el carro sube por el
       centro. Al que le dan se lo llevan con <b>funeral</b>. En el menu, <kbd>1</kbd> juega contra
-      la maquina, <kbd>2</kbd> es a dos y <kbd>3</kbd> ensena los controles.</p>
+      la maquina, <kbd>2</kbd> es a dos, <kbd>3</kbd> ensena los controles y <kbd>4</kbd> los
+      creditos, con la foto del autor digitalizada a un bit y el texto subiendo por encima.</p>
     <h2>Que hay debajo</h2>
     <p>El juego es el mismo binario que corre en un Spectrum 128K real, con su pantalla de carga
       precargada en la memoria de video. La ROM es <b>sintetica</b> (manejador minimo de la
@@ -925,7 +927,7 @@
   // --- teclado ----------------------------------------------------------
   var MAPA = {
     KeyQ: 'Q', KeyA: 'A', KeyZ: 'Z', KeyP: 'P', KeyL: 'L', KeyB: 'B',
-    Digit1: '1', Digit2: '2', Digit3: '3', Space: 'SPACE', Enter: 'ENTER',
+    Digit1: '1', Digit2: '2', Digit3: '3', Digit4: '4', Space: 'SPACE', Enter: 'ENTER',
     KeyM: 'M', KeyN: 'NN', KeyH: 'HH', KeyO: 'O', KeyI: 'I'
   };
   var estado = document.getElementById('estado');
