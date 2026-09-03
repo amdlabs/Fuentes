@@ -32,6 +32,7 @@ primero que consiga 5 impactos.
     dist/balava.z80        <- snapshot listo para cargar en un emulador
     dist/balava.scr        <- la pantalla de carga suelta (SCREEN$ de 6912 bytes)
     dist/balava-web.html   <- pagina autocontenida: el juego con su emulador dentro
+    dist/balava.asm        <- el fuente en un solo fichero, para ensamblar a mano
 
 ## Jugar en el navegador
 
@@ -145,6 +146,18 @@ Carga `dist/balava.z80` en cualquier emulador de Spectrum (Fuse, ZEsarUX,
 Spectaculator, SpecEmu, JSSpeccy…). Es un snapshot de **128K** —hace falta el
 AY para la música—, así que arranca directamente en el juego, sin BASIC de por
 medio.
+
+## Ensamblarlo a mano, sin nada mas
+
+`dist/balava.asm` es el juego **en un solo fichero**: lleva dentro la foto de los
+créditos y la pantalla de carga (que en el proyecto salen de dos scripts), y se
+dibuja la pantalla de carga él solo al arrancar. Se ensambla tal cual, con pasmo
+o con el ensamblador que traiga el emulador:
+
+    pasmo --tapbas dist/balava.asm balava.tap     <- cinta que arranca sola
+    pasmo --bin    dist/balava.asm balava.bin     <- binario en ORG 0x8000
+
+Es un juego de **128K**: hace falta el AY para la música.
 
 ## Cómo compilarlo
 

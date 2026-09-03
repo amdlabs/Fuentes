@@ -14,3 +14,4 @@ python3 tools/musica.py --comprobar     # las tres voces, del mismo largo
 pasmo --bin --alocal src/balava.asm build/balava.bin build/balava.sym
 python3 tools/make_z80.py build/balava.bin dist/balava.z80 --pantalla dist/balava.scr
 python3 tools/web.py                     # pagina autocontenida del emulador
+python3 tools/asm_suelto.py              # y el .asm suelto, para ensamblar a mano
