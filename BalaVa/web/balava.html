@@ -1,0 +1,410 @@
+<title>BalaVa</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  /* Un mundo visual unico: la maquina, en negro mate de carcasa.
+     Por eso no hay tema claro; todo el color va declarado a mano. */
+  :root {
+    --carcasa: #17181a;
+    --panel: #212327;
+    --hueco: #0e0f11;
+    --linea: #33363b;
+    --texto: #e8e6e0;
+    --suave: #97968f;
+    --tecla: #3a3d43;
+    --amarillo: #cdcd00;
+    --rojo: #cd0000;
+    --verde: #00cd00;
+    --cian: #00cdcd;
+    --escala: clamp(0.5rem, 0.45rem + 0.3vw, 0.75rem);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--carcasa);
+    color: var(--texto);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .envoltura {
+    max-width: 62rem;
+    margin: 0 auto;
+    padding: clamp(1.25rem, 1rem + 2vw, 2.75rem) 1.25rem 3rem;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(1.25rem, 1rem + 1.5vw, 2rem);
+  }
+
+  /* --- cabecera ---------------------------------------------------- */
+  header { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.5rem 1.5rem; }
+  .marca {
+    font-family: Silkscreen, "IBM Plex Mono", monospace;
+    font-weight: 700;
+    font-size: clamp(2rem, 1.4rem + 3vw, 3.25rem);
+    letter-spacing: 0.06em;
+    line-height: 1;
+    margin: 0;
+    color: var(--amarillo);
+    text-shadow: 3px 3px 0 var(--rojo);
+  }
+  .lema { margin: 0; color: var(--suave); font-size: 0.95rem; max-width: 34rem; }
+  .arcoiris { display: flex; height: 6px; width: 100%; margin-top: 0.35rem; }
+  .arcoiris span { flex: 1; }
+
+  /* --- la maquina --------------------------------------------------- */
+  .maquina {
+    background: var(--panel);
+    border: 1px solid var(--linea);
+    border-radius: 4px;
+    padding: clamp(0.75rem, 0.5rem + 1vw, 1.25rem);
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .borde {
+    background: #000;                 /* lo pinta el emulador segun el borde real */
+    padding: clamp(0.75rem, 0.4rem + 2vw, 2rem);
+    display: flex;
+    justify-content: center;
+    transition: background-color 80ms linear;
+  }
+  canvas {
+    width: 100%;
+    max-width: 44rem;
+    aspect-ratio: 4 / 3;
+    display: block;
+    background: #000;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+  .mandos { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+  button {
+    font: 600 0.85rem/1 "IBM Plex Mono", monospace;
+    letter-spacing: 0.04em;
+    color: var(--texto);
+    background: var(--tecla);
+    border: 1px solid var(--linea);
+    border-bottom-width: 3px;
+    border-radius: 3px;
+    padding: 0.55rem 0.9rem;
+    cursor: pointer;
+  }
+  button:hover { background: #464a51; }
+  button:active { border-bottom-width: 1px; transform: translateY(2px); }
+  button:focus-visible { outline: 2px solid var(--amarillo); outline-offset: 2px; }
+  button[aria-pressed="true"] { background: var(--amarillo); color: #17181a; border-color: var(--amarillo); }
+  .estado { margin-left: auto; font: 400 0.8rem/1 "IBM Plex Mono", monospace; color: var(--suave); }
+
+  /* --- controles ---------------------------------------------------- */
+  .jugadores { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }
+  .jugador {
+    background: var(--panel);
+    border: 1px solid var(--linea);
+    border-left: 3px solid var(--color, var(--amarillo));
+    border-radius: 3px;
+    padding: 0.9rem 1rem;
+  }
+  .jugador h2 {
+    font: 700 0.75rem/1 Silkscreen, monospace;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin: 0 0 0.75rem;
+    color: var(--color, var(--amarillo));
+  }
+  .fila { display: flex; align-items: center; gap: 0.6rem; padding: 0.25rem 0; }
+  .fila + .fila { border-top: 1px solid var(--linea); }
+  kbd {
+    font: 600 0.8rem/1 "IBM Plex Mono", monospace;
+    background: var(--tecla);
+    border: 1px solid var(--linea);
+    border-bottom-width: 3px;
+    border-radius: 3px;
+    padding: 0.35rem 0.55rem;
+    min-width: 2.1rem;
+    text-align: center;
+  }
+  .que { color: var(--suave); font-size: 0.9rem; }
+
+  /* --- botones tactiles: solo donde no hay teclado -------------------- */
+  .tactil { display: none; gap: 0.75rem; }
+  @media (pointer: coarse) {
+    .tactil { display: grid; grid-template-columns: 1fr 1fr; }
+  }
+  .tactil .lado { display: grid; gap: 0.4rem; }
+  .tactil button { padding: 0.9rem 0.5rem; font-size: 1rem; }
+
+  /* --- notas -------------------------------------------------------- */
+  .notas { color: var(--suave); font-size: 0.88rem; display: grid; gap: 0.6rem; }
+  .notas h2 { font: 600 0.75rem/1 "IBM Plex Mono", monospace; letter-spacing: 0.14em;
+              text-transform: uppercase; color: var(--texto); margin: 0; }
+  .notas p { margin: 0; max-width: 60ch; }
+  .notas b { color: var(--texto); font-weight: 600; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="envoltura">
+  <header>
+    <div>
+      <h1 class="marca">BALAVA</h1>
+      <div class="arcoiris" aria-hidden="true">
+        <span style="background:var(--rojo)"></span>
+        <span style="background:var(--amarillo)"></span>
+        <span style="background:var(--verde)"></span>
+        <span style="background:var(--cian)"></span>
+      </div>
+    </div>
+    <p class="lema">Duelo en el oeste para uno o dos jugadores. ZX Spectrum 128K, 13 KB de codigo
+      maquina y musica de tres voces por el AY, corriendo aqui sobre un Z80 emulado en JavaScript.</p>
+  </header>
+
+  <div class="maquina">
+    <div class="borde" id="borde">
+      <canvas id="pantalla" width="256" height="192"
+              aria-label="Pantalla del ZX Spectrum con BalaVa"></canvas>
+    </div>
+    <div class="mandos">
+      <button id="sonido" aria-pressed="false">SONIDO</button>
+      <button id="reinicio">REINICIAR</button>
+      <span class="estado" id="estado">pulsa una tecla para empezar</span>
+    </div>
+    <div class="tactil" id="tactil">
+      <div class="lado">
+        <button data-tecla="Q">SHERIFF ▲</button>
+        <button data-tecla="A">SHERIFF ▼</button>
+        <button data-tecla="Z">DISPARO</button>
+      </div>
+      <div class="lado">
+        <button data-tecla="P">BANDIDO ▲</button>
+        <button data-tecla="L">BANDIDO ▼</button>
+        <button data-tecla="B">DISPARO</button>
+      </div>
+      <button data-tecla="1">1 UN JUGADOR</button>
+      <button data-tecla="2">2 DOS JUGADORES</button>
+      <button data-tecla="3">3 CONTROLES</button>
+      <button data-tecla="4">4 CREDITOS</button>
+    </div>
+  </div>
+
+  <div class="jugadores">
+    <section class="jugador" style="--color: var(--amarillo)">
+      <h2>Jugador 1 · Sheriff</h2>
+      <div class="fila"><kbd>Q</kbd><span class="que">subir</span></div>
+      <div class="fila"><kbd>A</kbd><span class="que">bajar</span></div>
+      <div class="fila"><kbd>Z</kbd><span class="que">disparar</span></div>
+    </section>
+    <section class="jugador" style="--color: var(--cian)">
+      <h2>Jugador 2 · Bandido</h2>
+      <div class="fila"><kbd>P</kbd><span class="que">subir</span></div>
+      <div class="fila"><kbd>L</kbd><span class="que">bajar</span></div>
+      <div class="fila"><kbd>B</kbd><span class="que">disparar</span></div>
+    </section>
+  </div>
+
+  <div class="notas">
+    <h2>Como va la partida</h2>
+    <p>Los dos pistoleros solo se mueven arriba y abajo. Cada uno lleva <b>ocho balas</b>, dibujadas
+      arriba: cuando se acaban solo queda esquivar, y si los dos se quedan secos se acaba la
+      partida. Se puede disparar con otras balas en el aire. Cada tiro <b>arranca unos pixeles</b>
+      de lo que toca, asi que los barriles y los cactus se van perforando; los barriles salen a
+      suertes y nunca a la misma altura. Por abajo anda un <b>caballo suelto</b> que pasta, se encabrita al oir un tiro y embiste al que le dispara; y el carro sube por el
+      centro. Al que le dan se lo llevan con <b>funeral</b>. En el menu, <kbd>1</kbd> juega contra
+      la maquina, <kbd>2</kbd> es a dos, <kbd>3</kbd> ensena los controles y <kbd>4</kbd> los
+      creditos, con la foto del autor digitalizada a un bit y el texto subiendo por encima.</p>
+    <h2>Que hay debajo</h2>
+    <p>El juego es el mismo binario que corre en un Spectrum 128K real, con su pantalla de carga
+      precargada en la memoria de video. La ROM es <b>sintetica</b> (manejador minimo de la
+      interrupcion y un juego de caracteres 8x8): el juego no llama a ninguna rutina del sistema,
+      asi que no hace falta ninguna imagen de ROM con derechos. La musica va por el <b>AY-3-8912</b>,
+      con sus tres canales sintetizados aqui a partir de los registros que escribe el juego. El
+      nucleo Z80 en JavaScript se comprueba fotograma a fotograma contra un emulador de
+      referencia.</p>
+  </div>
+</div>
+
+<script>/*@z80@*/</script>
+<script>
+  'use strict';
+  var DATOS = /*@datos@*/;
+
+  function b64(cadena) {
+    var bruto = atob(cadena), a = new Uint8Array(bruto.length);
+    for (var i = 0; i < bruto.length; i++) a[i] = bruto.charCodeAt(i);
+    return a;
+  }
+
+  var fuente = b64(DATOS.fuente);
+  var pantallaCarga = b64(DATOS.pantalla);
+  var codigo = b64(DATOS.codigo);
+
+  var rom = new Uint8Array(0x4000);
+  rom[0x0000] = 0xf3;                       // DI
+  rom[0x0038] = 0xfb;                       // EI   (manejador de la IM 1)
+  rom[0x0039] = 0xc9;                       // RET
+  rom.set(fuente, 0x3d00);                  // juego de caracteres, donde la ROM real
+
+  var maquina = new BalaVa.Spectrum();
+  function arrancar() {
+    maquina.cargar(rom, pantallaCarga, codigo, 0x8000, 0x8000, 0xff00, 0x5c3a);
+  }
+  arrancar();
+
+  // --- pintado ---------------------------------------------------------
+  var lienzo = document.getElementById('pantalla');
+  var ctx = lienzo.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  var imagen = ctx.createImageData(256, 192);
+  var pixeles = new Uint32Array(imagen.data.buffer);
+  var marco = document.getElementById('borde');
+  var APAGADO = [0x000000, 0x0000cd, 0xcd0000, 0xcd00cd, 0x00cd00, 0x00cdcd, 0xcdcd00, 0xcdcdcd];
+  var BRILLO = [0x000000, 0x0000ff, 0xff0000, 0xff00ff, 0x00ff00, 0x00ffff, 0xffff00, 0xffffff];
+  function abgr(rgb) {                       // el buffer va en ABGR
+    return 0xff000000 | ((rgb & 0xff) << 16) | (rgb & 0xff00) | ((rgb >> 16) & 0xff);
+  }
+  var PAL = [APAGADO.map(abgr), BRILLO.map(abgr)];
+  var fotograma = 0, bordeActual = -1;
+
+  function pintar() {
+    var mem = maquina.mem, destello = (fotograma >> 4) & 1;
+    for (var y = 0; y < 192; y++) {
+      var base = 0x4000 | ((y & 0xc0) << 5) | ((y & 7) << 8) | ((y & 0x38) << 2);
+      var attrBase = 0x5800 + (y >> 3) * 32, fila = y * 256;
+      for (var c = 0; c < 32; c++) {
+        var b = mem[base + c], a = mem[attrBase + c];
+        var tabla = PAL[(a >> 6) & 1];
+        var tinta = tabla[a & 7], papel = tabla[(a >> 3) & 7];
+        if ((a & 0x80) && destello) { var t = tinta; tinta = papel; papel = t; }
+        var x = fila + c * 8;
+        for (var k = 0; k < 8; k++) pixeles[x + k] = (b & (0x80 >> k)) ? tinta : papel;
+      }
+    }
+    ctx.putImageData(imagen, 0, 0);
+    if (maquina.borde !== bordeActual) {
+      bordeActual = maquina.borde;
+      marco.style.backgroundColor = '#' + ('00000' + APAGADO[bordeActual].toString(16)).slice(-6);
+    }
+  }
+
+  // --- sonido: sintesis del AY de tres canales -------------------------
+  var audio = null, ganancia = null, siguiente = 0, sonando = false;
+  var MUESTRAS = 882;                        // 44100 / 50
+  var PASO_AY = (1773400 / 16) / 44100;      // ticks del contador por muestra
+  var cuentaTono = [0, 0, 0], nivelTono = [1, 1, 1];
+  var cuentaRuido = 0, lfsr = 1, nivelRuido = 1;
+  var ultimaEntrada = 0, ultimaSalida = 0;   // para quitar la componente continua
+  var VOLUMEN = [0, 0.006, 0.008, 0.011, 0.016, 0.022, 0.032, 0.045,
+                 0.063, 0.089, 0.126, 0.178, 0.251, 0.355, 0.501, 0.708];
+
+  function tono() {
+    if (!sonando || !audio) return;
+    var ay = maquina.ay;
+    var per = [ay[0] | ((ay[1] & 15) << 8), ay[2] | ((ay[3] & 15) << 8),
+               ay[4] | ((ay[5] & 15) << 8)];
+    var perRuido = (ay[6] & 31) || 1;
+    var mezcla = ay[7];
+    var vol = [ay[8] & 15, ay[9] & 15, ay[10] & 15];
+    var buf = audio.createBuffer(1, MUESTRAS, 44100), datos = buf.getChannelData(0);
+    for (var i = 0; i < MUESTRAS; i++) {
+      cuentaRuido -= PASO_AY;
+      while (cuentaRuido <= 0) {
+        cuentaRuido += perRuido * 2;
+        lfsr = (lfsr >> 1) | ((((lfsr ^ (lfsr >> 3)) & 1)) << 16);
+        nivelRuido = lfsr & 1;
+      }
+      var v = 0;
+      for (var c = 0; c < 3; c++) {
+        var p = per[c] || 1;
+        cuentaTono[c] -= PASO_AY;
+        while (cuentaTono[c] <= 0) { cuentaTono[c] += p; nivelTono[c] ^= 1; }
+        var conTono = !((mezcla >> c) & 1);
+        var conRuido = !((mezcla >> (c + 3)) & 1);
+        var salida = (conTono ? nivelTono[c] : 1) & (conRuido ? nivelRuido : 1);
+        if (salida) v += VOLUMEN[vol[c]];
+      }
+      v /= 3;                                  // los tres canales, sin saturar
+      ultimaSalida = v - ultimaEntrada + 0.995 * ultimaSalida;   // filtro de continua
+      ultimaEntrada = v;
+      datos[i] = ultimaSalida;
+    }
+    var f = audio.createBufferSource();
+    f.buffer = buf; f.connect(ganancia);
+    if (siguiente < audio.currentTime + 0.02) siguiente = audio.currentTime + 0.06;
+    f.start(siguiente);
+    siguiente += MUESTRAS / 44100;
+  }
+
+  var botonSonido = document.getElementById('sonido');
+  botonSonido.addEventListener('click', function () {
+    if (!audio) {
+      audio = new (window.AudioContext || window.webkitAudioContext)();
+      ganancia = audio.createGain();
+      ganancia.gain.value = 0.6;
+      ganancia.connect(audio.destination);
+    }
+    audio.resume();
+    sonando = !sonando;
+    siguiente = 0;
+    botonSonido.setAttribute('aria-pressed', sonando ? 'true' : 'false');
+  });
+
+  document.getElementById('reinicio').addEventListener('click', function () {
+    arrancar();
+    estado.textContent = 'pulsa una tecla para empezar';
+  });
+
+  // --- teclado ----------------------------------------------------------
+  var MAPA = {
+    KeyQ: 'Q', KeyA: 'A', KeyZ: 'Z', KeyP: 'P', KeyL: 'L', KeyB: 'B',
+    Digit1: '1', Digit2: '2', Digit3: '3', Digit4: '4', Space: 'SPACE', Enter: 'ENTER',
+    KeyM: 'M', KeyN: 'NN', KeyH: 'HH', KeyO: 'O', KeyI: 'I'
+  };
+  var estado = document.getElementById('estado');
+  var jugando = false;
+  function marcarJuego() {
+    if (jugando) return;
+    jugando = true;
+    estado.textContent = 'en marcha · 50 fps';
+  }
+  window.addEventListener('keydown', function (e) {
+    var t = MAPA[e.code];
+    if (!t) return;
+    maquina.teclas[t] = true;
+    marcarJuego();
+    e.preventDefault();
+  });
+  window.addEventListener('keyup', function (e) {
+    var t = MAPA[e.code];
+    if (!t) return;
+    maquina.teclas[t] = false;
+    e.preventDefault();
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-tecla]'), function (b) {
+    var t = b.getAttribute('data-tecla');
+    function abajo(e) { e.preventDefault(); maquina.teclas[t] = true; marcarJuego(); }
+    function arriba(e) { e.preventDefault(); maquina.teclas[t] = false; }
+    b.addEventListener('pointerdown', abajo);
+    b.addEventListener('pointerup', arriba);
+    b.addEventListener('pointerleave', arriba);
+    b.addEventListener('pointercancel', arriba);
+  });
+
+  // --- bucle -------------------------------------------------------------
+  var reloj = 0;
+  function vuelta(ahora) {
+    requestAnimationFrame(vuelta);
+    if (!reloj) reloj = ahora;
+    var pendientes = Math.min(4, Math.floor((ahora - reloj) / 20));
+    if (!pendientes) return;
+    reloj += pendientes * 20;
+    for (var i = 0; i < pendientes; i++) {
+      maquina.frame();
+      fotograma++;
+      tono();
+    }
+    pintar();
+  }
+  pintar();
+  requestAnimationFrame(vuelta);
+</script>

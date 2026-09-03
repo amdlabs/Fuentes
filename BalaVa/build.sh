@@ -1,0 +1,17 @@
+#!/bin/sh
+# Compila el juego y genera el snapshot .z80 en dist/
+set -e
+cd "$(dirname "$0")"
+mkdir -p build dist
+if [ ! -f dist/balava.scr ] || [ tools/pantalla_carga.py -nt dist/balava.scr ]; then
+    python3 tools/pantalla_carga.py          # necesita Pillow
+fi
+if [ ! -f build/foto.bin ] || [ tools/foto.py -nt build/foto.bin ] \
+        || [ arte/autor.png -nt build/foto.bin ]; then
+    python3 tools/foto.py                   # la foto de los creditos
+fi
+python3 tools/musica.py --comprobar     # las tres voces, del mismo largo
+pasmo --bin --alocal src/balava.asm build/balava.bin build/balava.sym
+python3 tools/make_z80.py build/balava.bin dist/balava.z80 --pantalla dist/balava.scr
+python3 tools/web.py                     # pagina autocontenida del emulador
+python3 tools/asm_suelto.py              # y el .asm suelto, para ensamblar a mano

@@ -1,0 +1,981 @@
+<title>BalaVa</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  /* Un mundo visual unico: la maquina, en negro mate de carcasa.
+     Por eso no hay tema claro; todo el color va declarado a mano. */
+  :root {
+    --carcasa: #17181a;
+    --panel: #212327;
+    --hueco: #0e0f11;
+    --linea: #33363b;
+    --texto: #e8e6e0;
+    --suave: #97968f;
+    --tecla: #3a3d43;
+    --amarillo: #cdcd00;
+    --rojo: #cd0000;
+    --verde: #00cd00;
+    --cian: #00cdcd;
+    --escala: clamp(0.5rem, 0.45rem + 0.3vw, 0.75rem);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--carcasa);
+    color: var(--texto);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .envoltura {
+    max-width: 62rem;
+    margin: 0 auto;
+    padding: clamp(1.25rem, 1rem + 2vw, 2.75rem) 1.25rem 3rem;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(1.25rem, 1rem + 1.5vw, 2rem);
+  }
+
+  /* --- cabecera ---------------------------------------------------- */
+  header { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.5rem 1.5rem; }
+  .marca {
+    font-family: Silkscreen, "IBM Plex Mono", monospace;
+    font-weight: 700;
+    font-size: clamp(2rem, 1.4rem + 3vw, 3.25rem);
+    letter-spacing: 0.06em;
+    line-height: 1;
+    margin: 0;
+    color: var(--amarillo);
+    text-shadow: 3px 3px 0 var(--rojo);
+  }
+  .lema { margin: 0; color: var(--suave); font-size: 0.95rem; max-width: 34rem; }
+  .arcoiris { display: flex; height: 6px; width: 100%; margin-top: 0.35rem; }
+  .arcoiris span { flex: 1; }
+
+  /* --- la maquina --------------------------------------------------- */
+  .maquina {
+    background: var(--panel);
+    border: 1px solid var(--linea);
+    border-radius: 4px;
+    padding: clamp(0.75rem, 0.5rem + 1vw, 1.25rem);
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .borde {
+    background: #000;                 /* lo pinta el emulador segun el borde real */
+    padding: clamp(0.75rem, 0.4rem + 2vw, 2rem);
+    display: flex;
+    justify-content: center;
+    transition: background-color 80ms linear;
+  }
+  canvas {
+    width: 100%;
+    max-width: 44rem;
+    aspect-ratio: 4 / 3;
+    display: block;
+    background: #000;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+  .mandos { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+  button {
+    font: 600 0.85rem/1 "IBM Plex Mono", monospace;
+    letter-spacing: 0.04em;
+    color: var(--texto);
+    background: var(--tecla);
+    border: 1px solid var(--linea);
+    border-bottom-width: 3px;
+    border-radius: 3px;
+    padding: 0.55rem 0.9rem;
+    cursor: pointer;
+  }
+  button:hover { background: #464a51; }
+  button:active { border-bottom-width: 1px; transform: translateY(2px); }
+  button:focus-visible { outline: 2px solid var(--amarillo); outline-offset: 2px; }
+  button[aria-pressed="true"] { background: var(--amarillo); color: #17181a; border-color: var(--amarillo); }
+  .estado { margin-left: auto; font: 400 0.8rem/1 "IBM Plex Mono", monospace; color: var(--suave); }
+
+  /* --- controles ---------------------------------------------------- */
+  .jugadores { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }
+  .jugador {
+    background: var(--panel);
+    border: 1px solid var(--linea);
+    border-left: 3px solid var(--color, var(--amarillo));
+    border-radius: 3px;
+    padding: 0.9rem 1rem;
+  }
+  .jugador h2 {
+    font: 700 0.75rem/1 Silkscreen, monospace;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin: 0 0 0.75rem;
+    color: var(--color, var(--amarillo));
+  }
+  .fila { display: flex; align-items: center; gap: 0.6rem; padding: 0.25rem 0; }
+  .fila + .fila { border-top: 1px solid var(--linea); }
+  kbd {
+    font: 600 0.8rem/1 "IBM Plex Mono", monospace;
+    background: var(--tecla);
+    border: 1px solid var(--linea);
+    border-bottom-width: 3px;
+    border-radius: 3px;
+    padding: 0.35rem 0.55rem;
+    min-width: 2.1rem;
+    text-align: center;
+  }
+  .que { color: var(--suave); font-size: 0.9rem; }
+
+  /* --- botones tactiles: solo donde no hay teclado -------------------- */
+  .tactil { display: none; gap: 0.75rem; }
+  @media (pointer: coarse) {
+    .tactil { display: grid; grid-template-columns: 1fr 1fr; }
+  }
+  .tactil .lado { display: grid; gap: 0.4rem; }
+  .tactil button { padding: 0.9rem 0.5rem; font-size: 1rem; }
+
+  /* --- notas -------------------------------------------------------- */
+  .notas { color: var(--suave); font-size: 0.88rem; display: grid; gap: 0.6rem; }
+  .notas h2 { font: 600 0.75rem/1 "IBM Plex Mono", monospace; letter-spacing: 0.14em;
+              text-transform: uppercase; color: var(--texto); margin: 0; }
+  .notas p { margin: 0; max-width: 60ch; }
+  .notas b { color: var(--texto); font-weight: 600; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="envoltura">
+  <header>
+    <div>
+      <h1 class="marca">BALAVA</h1>
+      <div class="arcoiris" aria-hidden="true">
+        <span style="background:var(--rojo)"></span>
+        <span style="background:var(--amarillo)"></span>
+        <span style="background:var(--verde)"></span>
+        <span style="background:var(--cian)"></span>
+      </div>
+    </div>
+    <p class="lema">Duelo en el oeste para uno o dos jugadores. ZX Spectrum 128K, 13 KB de codigo
+      maquina y musica de tres voces por el AY, corriendo aqui sobre un Z80 emulado en JavaScript.</p>
+  </header>
+
+  <div class="maquina">
+    <div class="borde" id="borde">
+      <canvas id="pantalla" width="256" height="192"
+              aria-label="Pantalla del ZX Spectrum con BalaVa"></canvas>
+    </div>
+    <div class="mandos">
+      <button id="sonido" aria-pressed="false">SONIDO</button>
+      <button id="reinicio">REINICIAR</button>
+      <span class="estado" id="estado">pulsa una tecla para empezar</span>
+    </div>
+    <div class="tactil" id="tactil">
+      <div class="lado">
+        <button data-tecla="Q">SHERIFF ▲</button>
+        <button data-tecla="A">SHERIFF ▼</button>
+        <button data-tecla="Z">DISPARO</button>
+      </div>
+      <div class="lado">
+        <button data-tecla="P">BANDIDO ▲</button>
+        <button data-tecla="L">BANDIDO ▼</button>
+        <button data-tecla="B">DISPARO</button>
+      </div>
+      <button data-tecla="1">1 UN JUGADOR</button>
+      <button data-tecla="2">2 DOS JUGADORES</button>
+      <button data-tecla="3">3 CONTROLES</button>
+      <button data-tecla="4">4 CREDITOS</button>
+    </div>
+  </div>
+
+  <div class="jugadores">
+    <section class="jugador" style="--color: var(--amarillo)">
+      <h2>Jugador 1 · Sheriff</h2>
+      <div class="fila"><kbd>Q</kbd><span class="que">subir</span></div>
+      <div class="fila"><kbd>A</kbd><span class="que">bajar</span></div>
+      <div class="fila"><kbd>Z</kbd><span class="que">disparar</span></div>
+    </section>
+    <section class="jugador" style="--color: var(--cian)">
+      <h2>Jugador 2 · Bandido</h2>
+      <div class="fila"><kbd>P</kbd><span class="que">subir</span></div>
+      <div class="fila"><kbd>L</kbd><span class="que">bajar</span></div>
+      <div class="fila"><kbd>B</kbd><span class="que">disparar</span></div>
+    </section>
+  </div>
+
+  <div class="notas">
+    <h2>Como va la partida</h2>
+    <p>Los dos pistoleros solo se mueven arriba y abajo. Cada uno lleva <b>ocho balas</b>, dibujadas
+      arriba: cuando se acaban solo queda esquivar, y si los dos se quedan secos se acaba la
+      partida. Se puede disparar con otras balas en el aire. Cada tiro <b>arranca unos pixeles</b>
+      de lo que toca, asi que los barriles y los cactus se van perforando; los barriles salen a
+      suertes y nunca a la misma altura. Por abajo anda un <b>caballo suelto</b> que pasta, se encabrita al oir un tiro y embiste al que le dispara; y el carro sube por el
+      centro. Al que le dan se lo llevan con <b>funeral</b>. En el menu, <kbd>1</kbd> juega contra
+      la maquina, <kbd>2</kbd> es a dos, <kbd>3</kbd> ensena los controles y <kbd>4</kbd> los
+      creditos, con la foto del autor digitalizada a un bit y el texto subiendo por encima.</p>
+    <h2>Que hay debajo</h2>
+    <p>El juego es el mismo binario que corre en un Spectrum 128K real, con su pantalla de carga
+      precargada en la memoria de video. La ROM es <b>sintetica</b> (manejador minimo de la
+      interrupcion y un juego de caracteres 8x8): el juego no llama a ninguna rutina del sistema,
+      asi que no hace falta ninguna imagen de ROM con derechos. La musica va por el <b>AY-3-8912</b>,
+      con sus tres canales sintetizados aqui a partir de los registros que escribe el juego. El
+      nucleo Z80 en JavaScript se comprueba fotograma a fotograma contra un emulador de
+      referencia.</p>
+  </div>
+</div>
+
+<script>// Nucleo Z80 + ULA de ZX Spectrum 48K, lo justo para mover BalaVa.
+// Se usa igual desde el navegador (artefacto) que desde node (pruebas).
+(function (raiz) {
+  'use strict';
+
+  var S = 0x80, Z = 0x40, F5 = 0x20, H = 0x10, F3 = 0x08, PV = 0x04, N = 0x02, C = 0x01;
+
+  var SZ53 = new Uint8Array(256), SZ53P = new Uint8Array(256), PAR = new Uint8Array(256);
+  for (var i = 0; i < 256; i++) {
+    var p = 0, j = i;
+    for (var k = 0; k < 8; k++) { p ^= j & 1; j >>= 1; }
+    PAR[i] = p ? 0 : PV;
+    SZ53[i] = (i & (S | F5 | F3)) | (i === 0 ? Z : 0);
+    SZ53P[i] = SZ53[i] | PAR[i];
+  }
+
+  function Spectrum() {
+    this.mem = new Uint8Array(65536);
+    this.teclas = {};                 // "fila,bit" -> pulsada
+    this.borde = 0;
+    this.altavoz = 0;
+    this.ay = new Uint8Array(16);      // registros del AY del 128K
+    this.ayReg = 0;
+    this.cambios = [];                // [t, nivel] del altavoz dentro del frame
+    this.tFrame = 0;
+    this.reset();
+  }
+
+  Spectrum.TICKS_FRAME = 69888;
+
+  // --- matriz de teclado: semifila (bit de A8..A15) y bit de datos -----
+  Spectrum.MATRIZ = {
+    CAPS: [0, 0], Z: [0, 1], X: [0, 2], C: [0, 3], V: [0, 4],
+    A: [1, 0], S: [1, 1], D: [1, 2], F: [1, 3], G: [1, 4],
+    Q: [2, 0], W: [2, 1], E: [2, 2], R: [2, 3], T: [2, 4],
+    '1': [3, 0], '2': [3, 1], '3': [3, 2], '4': [3, 3], '5': [3, 4],
+    '0': [4, 0], '9': [4, 1], '8': [4, 2], '7': [4, 3], '6': [4, 4],
+    P: [5, 0], O: [5, 1], I: [5, 2], U: [5, 3], Y: [5, 4],
+    ENTER: [6, 0], L: [6, 1], K: [6, 2], J: [6, 3], HH: [6, 4],
+    SPACE: [7, 0], SYM: [7, 1], M: [7, 2], NN: [7, 3], B: [7, 4]
+  };
+
+  var p = Spectrum.prototype;
+
+  p.reset = function () {
+    this.a = this.f = this.b = this.c = this.d = this.e = this.h = this.l = 0;
+    this.a_ = this.f_ = this.b_ = this.c_ = this.d_ = this.e_ = this.h_ = this.l_ = 0;
+    this.ix = this.iy = 0;
+    this.i = 0x3f; this.r = 0;
+    this.sp = 0xffff; this.pc = 0;
+    this.iff1 = this.iff2 = 0; this.im = 1; this.halted = false;
+    this.t = 0;
+  };
+
+  // --- memoria y puertos ----------------------------------------------
+  p.leer = function (dir) { return this.mem[dir & 0xffff]; };
+  p.escribir = function (dir, v) {
+    dir &= 0xffff;
+    if (dir >= 0x4000) this.mem[dir] = v & 0xff;
+  };
+  p.leer16 = function (dir) { return this.leer(dir) | (this.leer(dir + 1) << 8); };
+  p.escribir16 = function (dir, v) { this.escribir(dir, v & 0xff); this.escribir(dir + 1, v >> 8); };
+
+  p.entrada = function (puerto) {
+    if (puerto & 1) return 0xff;                    // solo nos interesa la ULA
+    var alto = (puerto >> 8) & 0xff, res = 0xff;
+    for (var tecla in this.teclas) {
+      if (!this.teclas[tecla]) continue;
+      var m = Spectrum.MATRIZ[tecla];
+      if (!m) continue;
+      if (!(alto & (1 << m[0]))) res &= ~(1 << m[1]) & 0xff;
+    }
+    return res;
+  };
+
+  p.salida = function (puerto, v) {
+    if ((puerto & 0xc002) === 0xc000) { this.ayReg = v & 0x0f; return; }   // 0xFFFD
+    if ((puerto & 0xc002) === 0x8000) { this.ay[this.ayReg] = v; return; } // 0xBFFD
+    if (puerto & 1) return;
+    this.borde = v & 7;
+    var nivel = (v >> 4) & 1;
+    if (nivel !== this.altavoz) {
+      this.altavoz = nivel;
+      this.cambios.push([this.t, nivel]);
+    }
+  };
+
+  // --- utilidades de instruccion ---------------------------------------
+  p.busca = function () { var v = this.leer(this.pc); this.pc = (this.pc + 1) & 0xffff; return v; };
+  p.busca16 = function () { var v = this.leer16(this.pc); this.pc = (this.pc + 2) & 0xffff; return v; };
+  p.push = function (v) {
+    this.sp = (this.sp - 2) & 0xffff;
+    this.escribir16(this.sp, v);
+  };
+  p.pop = function () { var v = this.leer16(this.sp); this.sp = (this.sp + 2) & 0xffff; return v; };
+
+  p.hl = function () { return (this.h << 8) | this.l; };
+  p.setHl = function (v) { this.h = (v >> 8) & 0xff; this.l = v & 0xff; };
+  p.bc = function () { return (this.b << 8) | this.c; };
+  p.de = function () { return (this.d << 8) | this.e; };
+
+  // aritmetica
+  p.add8 = function (v) {
+    var r = this.a + v;
+    this.f = (r & 0xff ? 0 : Z) | (r & S) | (r & (F5 | F3)) |
+      ((this.a ^ v ^ r) & H) | (((this.a ^ v ^ 0x80) & (this.a ^ r) & 0x80) ? PV : 0) |
+      (r > 0xff ? C : 0);
+    this.a = r & 0xff;
+  };
+  p.adc8 = function (v) {
+    var cy = this.f & C, r = this.a + v + cy;
+    this.f = (r & 0xff ? 0 : Z) | (r & S) | (r & (F5 | F3)) |
+      ((this.a ^ v ^ r) & H) | (((this.a ^ v ^ 0x80) & (this.a ^ r) & 0x80) ? PV : 0) |
+      (r > 0xff ? C : 0);
+    this.a = r & 0xff;
+  };
+  p.sub8 = function (v) {
+    var r = this.a - v;
+    this.f = N | (r & 0xff ? 0 : Z) | (r & S) | (r & (F5 | F3)) |
+      ((this.a ^ v ^ r) & H) | (((this.a ^ v) & (this.a ^ r) & 0x80) ? PV : 0) |
+      (r < 0 ? C : 0);
+    this.a = r & 0xff;
+  };
+  p.sbc8 = function (v) {
+    var cy = this.f & C, r = this.a - v - cy;
+    this.f = N | (r & 0xff ? 0 : Z) | (r & S) | (r & (F5 | F3)) |
+      ((this.a ^ v ^ r) & H) | (((this.a ^ v) & (this.a ^ r) & 0x80) ? PV : 0) |
+      (r < 0 ? C : 0);
+    this.a = r & 0xff;
+  };
+  p.cp8 = function (v) {
+    var r = (this.a - v) & 0xff, rr = this.a - v;
+    this.f = N | (r ? 0 : Z) | (r & S) | (v & (F5 | F3)) |
+      ((this.a ^ v ^ r) & H) | (((this.a ^ v) & (this.a ^ r) & 0x80) ? PV : 0) |
+      (rr < 0 ? C : 0);
+  };
+  p.and8 = function (v) { this.a &= v; this.f = SZ53P[this.a] | H; };
+  p.or8 = function (v) { this.a |= v; this.f = SZ53P[this.a]; };
+  p.xor8 = function (v) { this.a ^= v; this.f = SZ53P[this.a]; };
+  p.inc8 = function (v) {
+    v = (v + 1) & 0xff;
+    this.f = (this.f & C) | SZ53[v] | ((v & 0x0f) ? 0 : H) | (v === 0x80 ? PV : 0);
+    return v;
+  };
+  p.dec8 = function (v) {
+    var r = (v - 1) & 0xff;
+    this.f = (this.f & C) | N | SZ53[r] | ((v & 0x0f) ? 0 : H) | (r === 0x7f ? PV : 0);
+    return r;
+  };
+  p.addHl = function (rp, v) {
+    var r = rp + v;
+    this.f = (this.f & (S | Z | PV)) | ((rp ^ v ^ r) >> 8 & H) |
+      ((r >> 8) & (F5 | F3)) | (r > 0xffff ? C : 0);
+    return r & 0xffff;
+  };
+  p.sbcHl = function (v) {
+    var hl = this.hl(), cy = this.f & C, r = hl - v - cy;
+    this.f = N | ((r & 0xffff) ? 0 : Z) | ((r >> 8) & (S | F5 | F3)) |
+      (((hl ^ v ^ r) >> 8) & H) | (((hl ^ v) & (hl ^ r) & 0x8000) ? PV : 0) |
+      (r < 0 ? C : 0);
+    this.setHl(r & 0xffff);
+  };
+  p.adcHl = function (v) {
+    var hl = this.hl(), cy = this.f & C, r = hl + v + cy;
+    this.f = ((r & 0xffff) ? 0 : Z) | ((r >> 8) & (S | F5 | F3)) |
+      (((hl ^ v ^ r) >> 8) & H) | (((hl ^ v ^ 0x8000) & (hl ^ r) & 0x8000) ? PV : 0) |
+      (r > 0xffff ? C : 0);
+    this.setHl(r & 0xffff);
+  };
+
+  // acceso a registro por indice (con sustitucion de HL por IX/IY)
+  p.getR = function (n, pref, dir) {
+    switch (n) {
+      case 0: return this.b; case 1: return this.c; case 2: return this.d; case 3: return this.e;
+      case 4: return pref ? (pref === 1 ? (this.ix >> 8) & 0xff : (this.iy >> 8) & 0xff) : this.h;
+      case 5: return pref ? (pref === 1 ? this.ix & 0xff : this.iy & 0xff) : this.l;
+      case 6: return this.leer(dir === undefined ? this.hl() : dir);
+      case 7: return this.a;
+    }
+  };
+  p.setR = function (n, v, pref, dir) {
+    v &= 0xff;
+    switch (n) {
+      case 0: this.b = v; break; case 1: this.c = v; break;
+      case 2: this.d = v; break; case 3: this.e = v; break;
+      case 4:
+        if (!pref) this.h = v;
+        else if (pref === 1) this.ix = (v << 8) | (this.ix & 0xff);
+        else this.iy = (v << 8) | (this.iy & 0xff);
+        break;
+      case 5:
+        if (!pref) this.l = v;
+        else if (pref === 1) this.ix = (this.ix & 0xff00) | v;
+        else this.iy = (this.iy & 0xff00) | v;
+        break;
+      case 6: this.escribir(dir === undefined ? this.hl() : dir, v); break;
+      case 7: this.a = v; break;
+    }
+  };
+
+  p.cond = function (n) {
+    switch (n) {
+      case 0: return !(this.f & Z); case 1: return !!(this.f & Z);
+      case 2: return !(this.f & C); case 3: return !!(this.f & C);
+      case 4: return !(this.f & PV); case 5: return !!(this.f & PV);
+      case 6: return !(this.f & S); case 7: return !!(this.f & S);
+    }
+  };
+
+  p.getRp = function (n, pref) {
+    switch (n) {
+      case 0: return this.bc(); case 1: return this.de();
+      case 2: return pref ? (pref === 1 ? this.ix : this.iy) : this.hl();
+      case 3: return this.sp;
+    }
+  };
+  p.setRp = function (n, v, pref) {
+    v &= 0xffff;
+    switch (n) {
+      case 0: this.b = v >> 8; this.c = v & 0xff; break;
+      case 1: this.d = v >> 8; this.e = v & 0xff; break;
+      case 2: if (!pref) this.setHl(v); else if (pref === 1) this.ix = v; else this.iy = v; break;
+      case 3: this.sp = v; break;
+    }
+  };
+
+  // --- ejecuta una instruccion ------------------------------------------
+  p.paso = function () {
+    if (this.halted) { this.t += 4; return; }
+    this.r = (this.r & 0x80) | ((this.r + 1) & 0x7f);
+    var op = this.busca();
+    if (op === 0xdd || op === 0xfd) {
+      var pref = op === 0xdd ? 1 : 2;
+      this.r = (this.r & 0x80) | ((this.r + 1) & 0x7f);
+      this.t += 4;
+      this.ejecuta(this.busca(), pref);
+    } else {
+      this.ejecuta(op, 0);
+    }
+  };
+
+  p.dirIdx = function (pref) {          // (IX+d) / (IY+d)
+    var d = this.busca();
+    if (d > 127) d -= 256;
+    this.t += 8;
+    return (((pref === 1 ? this.ix : this.iy) + d) & 0xffff);
+  };
+
+  p.ejecuta = function (op, pref) {
+    var x = op >> 6, y = (op >> 3) & 7, z = op & 7, q = y & 1, pp = y >> 1;
+    var dir, v, t;
+
+    if (op === 0xcb) { this.cb(pref); return; }
+    if (op === 0xed) { this.ed(); return; }
+
+    switch (x) {
+      case 0:
+        switch (z) {
+          case 0:
+            if (y === 0) { this.t += 4; }
+            else if (y === 1) {                       // EX AF,AF'
+              t = this.a; this.a = this.a_; this.a_ = t;
+              t = this.f; this.f = this.f_; this.f_ = t; this.t += 4;
+            } else if (y === 2) {                     // DJNZ
+              var d = this.busca(); if (d > 127) d -= 256;
+              this.b = (this.b - 1) & 0xff;
+              if (this.b) { this.pc = (this.pc + d) & 0xffff; this.t += 13; } else this.t += 8;
+            } else if (y === 3) {                     // JR d
+              var d2 = this.busca(); if (d2 > 127) d2 -= 256;
+              this.pc = (this.pc + d2) & 0xffff; this.t += 12;
+            } else {                                  // JR cc,d
+              var d3 = this.busca(); if (d3 > 127) d3 -= 256;
+              if (this.cond(y - 4)) { this.pc = (this.pc + d3) & 0xffff; this.t += 12; }
+              else this.t += 7;
+            }
+            break;
+          case 1:
+            if (!q) { this.setRp(pp, this.busca16(), pref); this.t += 10; }
+            else { this.setRp(2, this.addHl(this.getRp(2, pref), this.getRp(pp, pref)), pref); this.t += 11; }
+            break;
+          case 2:
+            if (!q) {
+              if (pp === 0) { this.escribir(this.bc(), this.a); this.t += 7; }          // LD (BC),A
+              else if (pp === 1) { this.escribir(this.de(), this.a); this.t += 7; }     // LD (DE),A
+              else if (pp === 2) { this.escribir16(this.busca16(), this.getRp(2, pref)); this.t += 16; }
+              else { this.escribir(this.busca16(), this.a); this.t += 13; }             // LD (nn),A
+            } else {
+              if (pp === 0) { this.a = this.leer(this.bc()); this.t += 7; }             // LD A,(BC)
+              else if (pp === 1) { this.a = this.leer(this.de()); this.t += 7; }        // LD A,(DE)
+              else if (pp === 2) { this.setRp(2, this.leer16(this.busca16()), pref); this.t += 16; }
+              else { this.a = this.leer(this.busca16()); this.t += 13; }                // LD A,(nn)
+            }
+            break;
+          case 3:
+            v = this.getRp(pp, pref);
+            this.setRp(pp, q ? v - 1 : v + 1, pref);
+            this.t += 6;
+            break;
+          case 4:
+            if (y === 6 && pref) { dir = this.dirIdx(pref); this.escribir(dir, this.inc8(this.leer(dir))); this.t += 11; }
+            else if (y === 6) { this.escribir(this.hl(), this.inc8(this.leer(this.hl()))); this.t += 11; }
+            else { this.setR(y, this.inc8(this.getR(y, pref)), pref); this.t += 4; }
+            break;
+          case 5:
+            if (y === 6 && pref) { dir = this.dirIdx(pref); this.escribir(dir, this.dec8(this.leer(dir))); this.t += 11; }
+            else if (y === 6) { this.escribir(this.hl(), this.dec8(this.leer(this.hl()))); this.t += 11; }
+            else { this.setR(y, this.dec8(this.getR(y, pref)), pref); this.t += 4; }
+            break;
+          case 6:
+            if (y === 6 && pref) { dir = this.dirIdx(pref); this.escribir(dir, this.busca()); this.t += 11; }
+            else if (y === 6) { this.escribir(this.hl(), this.busca()); this.t += 10; }
+            else { this.setR(y, this.busca(), pref); this.t += 7; }
+            break;
+          case 7:
+            this.rotaAcc(y);
+            this.t += 4;
+            break;
+        }
+        break;
+
+      case 1:
+        if (op === 0x76) { this.halted = true; this.t += 4; break; }
+        if (pref && (y === 6 || z === 6)) {
+          dir = this.dirIdx(pref);
+          if (z === 6) this.setR(y, this.leer(dir), 0);
+          else this.escribir(dir, this.getR(z, 0));
+          this.t += 7;
+        } else {
+          this.setR(y, this.getR(z, pref), pref);
+          this.t += (y === 6 || z === 6) ? 7 : 4;
+        }
+        break;
+
+      case 2:
+        if (pref && z === 6) { dir = this.dirIdx(pref); v = this.leer(dir); this.t += 7; }
+        else { v = this.getR(z, pref); this.t += (z === 6) ? 7 : 4; }
+        this.alu(y, v);
+        break;
+
+      case 3:
+        switch (z) {
+          case 0:
+            if (this.cond(y)) { this.pc = this.pop(); this.t += 11; } else this.t += 5;
+            break;
+          case 1:
+            if (!q) {
+              v = this.pop();
+              if (pp === 3) { this.a = v >> 8; this.f = v & 0xff; }
+              else this.setRp(pp, v, pref);
+              this.t += 10;
+            } else if (pp === 0) { this.pc = this.pop(); this.t += 10; }
+            else if (pp === 1) {                       // EXX
+              t = this.b; this.b = this.b_; this.b_ = t;
+              t = this.c; this.c = this.c_; this.c_ = t;
+              t = this.d; this.d = this.d_; this.d_ = t;
+              t = this.e; this.e = this.e_; this.e_ = t;
+              t = this.h; this.h = this.h_; this.h_ = t;
+              t = this.l; this.l = this.l_; this.l_ = t;
+              this.t += 4;
+            } else if (pp === 2) { this.pc = this.getRp(2, pref); this.t += 4; }
+            else { this.sp = this.getRp(2, pref); this.t += 6; }
+            break;
+          case 2:
+            v = this.busca16();
+            if (this.cond(y)) this.pc = v;
+            this.t += 10;
+            break;
+          case 3:
+            if (y === 0) { this.pc = this.busca16(); this.t += 10; }
+            else if (y === 2) { v = this.busca(); this.salida((this.a << 8) | v, this.a); this.t += 11; }
+            else if (y === 3) { v = this.busca(); this.a = this.entrada((this.a << 8) | v); this.t += 11; }
+            else if (y === 4) {                        // EX (SP),HL
+              v = this.leer16(this.sp);
+              this.escribir16(this.sp, this.getRp(2, pref));
+              this.setRp(2, v, pref); this.t += 19;
+            } else if (y === 5) {                      // EX DE,HL
+              t = this.d; this.d = this.h; this.h = t;
+              t = this.e; this.e = this.l; this.l = t; this.t += 4;
+            } else if (y === 6) { this.iff1 = this.iff2 = 0; this.t += 4; }
+            else { this.iff1 = this.iff2 = 1; this.t += 4; }
+            break;
+          case 4:
+            v = this.busca16();
+            if (this.cond(y)) { this.push(this.pc); this.pc = v; this.t += 17; } else this.t += 10;
+            break;
+          case 5:
+            if (!q) {
+              this.push(pp === 3 ? ((this.a << 8) | this.f) : this.getRp(pp, pref));
+              this.t += 11;
+            } else if (pp === 0) { v = this.busca16(); this.push(this.pc); this.pc = v; this.t += 17; }
+            break;
+          case 6:
+            this.alu(y, this.busca()); this.t += 7;
+            break;
+          case 7:
+            this.push(this.pc); this.pc = y * 8; this.t += 11;
+            break;
+        }
+        break;
+    }
+  };
+
+  p.alu = function (n, v) {
+    switch (n) {
+      case 0: this.add8(v); break; case 1: this.adc8(v); break;
+      case 2: this.sub8(v); break; case 3: this.sbc8(v); break;
+      case 4: this.and8(v); break; case 5: this.xor8(v); break;
+      case 6: this.or8(v); break; case 7: this.cp8(v); break;
+    }
+  };
+
+  p.rotaAcc = function (n) {
+    var a = this.a, cy = this.f & C, r;
+    switch (n) {
+      case 0: r = ((a << 1) | (a >> 7)) & 0xff; this.f = (this.f & (S | Z | PV)) | (r & (F5 | F3)) | (a >> 7); this.a = r; break;
+      case 1: r = ((a >> 1) | (a << 7)) & 0xff; this.f = (this.f & (S | Z | PV)) | (r & (F5 | F3)) | (a & 1); this.a = r; break;
+      case 2: r = ((a << 1) | cy) & 0xff; this.f = (this.f & (S | Z | PV)) | (r & (F5 | F3)) | (a >> 7); this.a = r; break;
+      case 3: r = ((a >> 1) | (cy << 7)) & 0xff; this.f = (this.f & (S | Z | PV)) | (r & (F5 | F3)) | (a & 1); this.a = r; break;
+      case 4:                                          // DAA
+        var c = this.f & C, ajuste = 0;
+        if ((this.f & H) || (a & 0x0f) > 9) ajuste |= 0x06;
+        if (c || a > 0x99) { ajuste |= 0x60; c = C; }
+        if (this.f & N) { r = (a - ajuste) & 0xff; this.f = N | ((a ^ r) & H); }
+        else { r = (a + ajuste) & 0xff; this.f = ((a ^ r) & H); }
+        this.f |= SZ53P[r] | c; this.a = r; break;
+      case 5: this.a = (~a) & 0xff; this.f = (this.f & (S | Z | PV | C)) | H | N | (this.a & (F5 | F3)); break;
+      case 6: this.f = (this.f & (S | Z | PV)) | (this.a & (F5 | F3)) | C; break;
+      case 7: this.f = (this.f & (S | Z | PV)) | (cy ? H : 0) | (this.a & (F5 | F3)) | (cy ? 0 : C); break;
+    }
+  };
+
+  // --- prefijo CB --------------------------------------------------------
+  p.cb = function (pref) {
+    var dir = null, op;
+    if (pref) { dir = this.dirIdx(pref); op = this.busca(); }
+    else op = this.busca();
+    var x = op >> 6, y = (op >> 3) & 7, z = op & 7;
+    var v = dir !== null ? this.leer(dir) : this.getR(z, 0);
+    var cy = this.f & C, r;
+    if (x === 0) {
+      switch (y) {
+        case 0: r = ((v << 1) | (v >> 7)) & 0xff; this.f = (v >> 7); break;
+        case 1: r = ((v >> 1) | (v << 7)) & 0xff; this.f = (v & 1); break;
+        case 2: r = ((v << 1) | cy) & 0xff; this.f = (v >> 7); break;
+        case 3: r = ((v >> 1) | (cy << 7)) & 0xff; this.f = (v & 1); break;
+        case 4: r = (v << 1) & 0xff; this.f = (v >> 7); break;
+        case 5: r = ((v >> 1) | (v & 0x80)) & 0xff; this.f = (v & 1); break;
+        case 6: r = ((v << 1) | 1) & 0xff; this.f = (v >> 7); break;
+        case 7: r = (v >> 1) & 0xff; this.f = (v & 1); break;
+      }
+      this.f |= SZ53P[r];
+      if (dir !== null) { this.escribir(dir, r); if (z !== 6) this.setR(z, r, 0); }
+      else this.setR(z, r, 0);
+      this.t += (dir !== null || z === 6) ? 15 : 8;
+    } else if (x === 1) {                              // BIT
+      r = v & (1 << y);
+      this.f = (this.f & C) | H | (r ? (r & S) : (Z | PV)) | (v & (F5 | F3));
+      this.t += (dir !== null || z === 6) ? 12 : 8;
+    } else {                                           // RES / SET
+      r = x === 2 ? (v & ~(1 << y)) & 0xff : (v | (1 << y));
+      if (dir !== null) { this.escribir(dir, r); if (z !== 6) this.setR(z, r, 0); }
+      else this.setR(z, r, 0);
+      this.t += (dir !== null || z === 6) ? 15 : 8;
+    }
+  };
+
+  // --- prefijo ED --------------------------------------------------------
+  p.ed = function () {
+    this.r = (this.r & 0x80) | ((this.r + 1) & 0x7f);
+    var op = this.busca(), x = op >> 6, y = (op >> 3) & 7, z = op & 7, q = y & 1, pp = y >> 1;
+    var v;
+    if (x === 1) {
+      switch (z) {
+        case 0:                                        // IN r,(C)
+          v = this.entrada(this.bc());
+          if (y !== 6) this.setR(y, v, 0);
+          this.f = (this.f & C) | SZ53P[v];
+          this.t += 12; break;
+        case 1:                                        // OUT (C),r
+          this.salida(this.bc(), y === 6 ? 0 : this.getR(y, 0));
+          this.t += 12; break;
+        case 2:
+          if (q) this.adcHl(this.getRp(pp, 0)); else this.sbcHl(this.getRp(pp, 0));
+          this.t += 15; break;
+        case 3:
+          v = this.busca16();
+          if (q) this.setRp(pp, this.leer16(v), 0); else this.escribir16(v, this.getRp(pp, 0));
+          this.t += 20; break;
+        case 4:                                        // NEG
+          v = this.a; this.a = 0; this.sub8(v); this.t += 8; break;
+        case 5:                                        // RETN / RETI
+          this.pc = this.pop(); this.iff1 = this.iff2; this.t += 14; break;
+        case 6:
+          this.im = (y === 0 || y === 4) ? 0 : (y === 2 || y === 6) ? 1 : 2;
+          if (y === 3 || y === 7) this.im = 2;
+          this.t += 8; break;
+        case 7:
+          if (y === 0) { this.i = this.a; this.t += 9; }
+          else if (y === 1) { this.r = this.a; this.t += 9; }
+          else if (y === 2) { this.a = this.i; this.f = (this.f & C) | SZ53[this.a] | (this.iff2 ? PV : 0); this.t += 9; }
+          else if (y === 3) { this.a = this.r; this.f = (this.f & C) | SZ53[this.a] | (this.iff2 ? PV : 0); this.t += 9; }
+          else this.t += 4;
+          break;
+      }
+    } else if (x === 2 && z <= 3 && y >= 4) {          // bloques LDI/LDD/CPI/...
+      this.bloque(y, z);
+    } else {
+      this.t += 8;                                     // ED sin uso: NOP
+    }
+  };
+
+  p.bloque = function (y, z) {
+    var inc = (y & 1) ? -1 : 1, repetir = y >= 6, v;
+    if (z === 0) {                                     // LDI / LDD / LDIR / LDDR
+      v = this.leer(this.hl());
+      this.escribir(this.de(), v);
+      this.setHl((this.hl() + inc) & 0xffff);
+      this.setRp(1, (this.de() + inc) & 0xffff, 0);
+      this.setRp(0, (this.bc() - 1) & 0xffff, 0);
+      var n = this.a + v;
+      this.f = (this.f & (S | Z | C)) | (this.bc() ? PV : 0) | (n & F3) | ((n & 2) ? F5 : 0);
+      this.t += 16;
+      if (repetir && this.bc()) { this.pc = (this.pc - 2) & 0xffff; this.t += 5; }
+    } else if (z === 1) {                              // CPI / CPD / CPIR / CPDR
+      v = this.leer(this.hl());
+      var r = (this.a - v) & 0xff;
+      this.setHl((this.hl() + inc) & 0xffff);
+      this.setRp(0, (this.bc() - 1) & 0xffff, 0);
+      this.f = (this.f & C) | N | SZ53[r] | ((this.a ^ v ^ r) & H) | (this.bc() ? PV : 0);
+      this.t += 16;
+      if (repetir && this.bc() && r) { this.pc = (this.pc - 2) & 0xffff; this.t += 5; }
+    } else {
+      this.t += 16;                                    // INI/OUTI y compañia: no se usan
+    }
+  };
+
+  // --- interrupcion y frame ----------------------------------------------
+  p.interrupcion = function () {
+    if (!this.iff1) return;
+    // al ejecutar HALT el PC ya quedo apuntando a la instruccion siguiente,
+    // asi que solo hay que despertar: nada de sumarle uno
+    this.halted = false;
+    this.iff1 = this.iff2 = 0;
+    this.push(this.pc);
+    if (this.im === 2) this.pc = this.leer16((this.i << 8) | 0xff);
+    else this.pc = 0x0038;
+    this.t += 13;
+  };
+
+  p.frame = function () {
+    this.cambios = [];
+    this.t = 0;
+    while (this.t < Spectrum.TICKS_FRAME) this.paso();
+    this.tFrame = this.t;
+    this.interrupcion();
+  };
+
+  // --- carga de la partida ------------------------------------------------
+  p.cargar = function (rom, pantalla, codigo, org, pc, sp, iy) {
+    this.mem.fill(0);
+    this.mem.set(rom, 0);
+    if (pantalla) this.mem.set(pantalla, 0x4000);
+    this.mem.set(codigo, org);
+    this.reset();
+    this.pc = pc; this.sp = sp; this.iy = iy;
+    this.im = 1; this.iff1 = this.iff2 = 1;
+  };
+
+  raiz.BalaVa = { Spectrum: Spectrum };
+  if (typeof module !== 'undefined' && module.exports) module.exports = raiz.BalaVa;
+})(typeof self !== 'undefined' ? self : this);
+</script>
+<script>
+  'use strict';
+  var DATOS = {"fuente": "AAAAAAAAAAAAQEBAQEAAQACgoAAAAAAAAGCg8KDwwEAAIHig4Dgo8ADAQNBg8FBwAHBAQGCwoHAAQEAAAAAAACBAQEBAQEAgQEAgICAgQEAAUODgUAAAAAAAAEBA8EBAAAAAAAAAAEAAAAAAAGAAAAAAAAAAAABAACBAQMCAgAAAYJCQsJCQYABgICAgICBwAGCQEDBgwPAAYJAQYBAQ4AAgIGBgoPAgAPCAgOAQEOAAcMCA8JCQYADwECAgIGBAAGCQkGCQkGAAYJCQ8BAw4AAAAEAAAABAAAAAQAAAAEAAAAAIcOAYAAAAAADwAPAAAAAAgHA4wAAA8BAgQEAAQAAAYJCwsLDAAGBgYJCQ8JAA4JCQ4JCQ8ABwgICAgIBwAOCQkJCQkOAA8ICA8ICA8ADwgIDwgICAAHCAgLCQkHAAkJCQ8JCQkADgQEBAQEDgHgQEBEREOAAAkKDAwKCgkACAgICAgIDwQmZaWkJCQgAAkNDQsLCwkABgkJCQkJBgAOCQkOCAgIA8QkJCSkQ6AADgkJDgsJCIAGCQgHAQkGAA8EBAQEBAQACQkJCQkJBgQkJCQiQkGABCQkJaWmZCAACQkGBgYJCQABCgoEBAQEAA8BAgIECA8GBAQEBAQEBgAACAgMBAQCBgICAgICAgYABAoAAAAAAAAAAAAAAAAACAQAAAAAAAAAAAAOAQ8JDwgICA4JCQkOAAAABwgICAcBAQEHCQkJBwAAAAYJDwgHAwQEDwQEBAQAAAAHCQkJBwgICA8JCQkJBAAADAQEBA8CAAAGAgICAggICAkKDAoJDAQEBAQEBAMAAAAPioqKioAAAA8JCQkJAAAABgkJCQYAAAAOCQkJDgAAAAcJCQkHAAAABwQEBAQAAAAPCAcBDwAABA8EBAQHAAAACQkJCQ8AAAAJCQYGBgAAAAEFCgoKAAAACQYGBgkAAAAJCQYGBAAAAA8CBgQPBgQECAQEBAYEBAQEBAQEBAwEBAIEBAQMAAAAAA4BgAAAAA8BAQEBAQ", "pantalla": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEDAB77BgY8Z/gBgjPwAAAAB4zIJAD2eAwAIzCZgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH4Af4AfgfgB+AAAAB+B+AH4AB+AH4H4AAAAAAAAAAAAf//4AfgAH4H4AAAB+AAfgH4AfgH4AB+AAAAAAAAAAAB+AB+B+AAfgfgAAAH4AB+AB+fgAfgAH4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADB4AGwwYGMmeYAYQz2AAAAAbM2DwANngMAEMxGYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB+AH+AH4H4AfgAAAAfgfgB+AAfgB+B+AAAAAAAAAAAAH//+AH4AB+B+AAAAfgAH4B+AH4B+AAfgAAAAAAAAAAAfgAfgfgAH4H4AAAB+AAfgAfn4AH4AB+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABgSARsMDJjNnmAGIM8wAAAAGbPBmAjZ4DACDMhmAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAfgAfgH4AfgH4AAAAfgB+AfgAH4B+AH4AAAAAAAAAAAB///4B////gfgAAAH///+AH4H4Af///4AAAAAAAAAAAH4Af4H4AB+B+AAAAfgAH4AB/4AB+AAfgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAfswDzD8cYxvZgH/57MAAAABm+/ZgHj2AwB+efvAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH4AH4B+AH4B+AAAAH4AfgH4AB+AfgB+AAAAAAAAAAAAf//+Af///4H4AAAB////gB+B+AH///+AAAAAAAAAAAB+AH+B+AAfgfgAAAH4AB+AAf+AAfgAH4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB+zAPPvx375nCAefHswAAAAGb78YAePfvwHx588AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf//4AAH/gAH4AAAAAf+AAfgAH4AB/4AAAAAAAAAAAAB+AH+B+AAfgfgAAAH4AB+B+AAfgfgAH4AAAAAAAAAAAH4Af4H///+B+AAAAf///4AfgfgB////gAAAAAAAAAAAf//+AfgAH4H///+B+AAfgAH/gAH4AB+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABkgGLPAyYzZ5gBgbPYAAAABszDGAMWeAwAGzBsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH//+AAB/4AB+AAAAAH/gAH4AB+AAf+AAAAAAAAAAAAAfgB/gfgAH4H4AAAB+AAfgfgAH4H4AB+AAAAAAAAAAAB+AH+B////gfgAAAH///+AH4H4Af///4AAAAAAAAAAAH///gH4AB+B////gfgAH4AB/4AB+AAfgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAx4BgzwYGM2f4AYGz0AAAAAaMxjwDBngMABsweAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB///4AB//gAfgAAAAH/+AB+AAfgAf/4AAAAAAAAAAAAH///gH4AB+B+AAAAfgAH4B+AH4B+AAfgAAAAAAAAAAAfgAfgfgAH4H4AAAB+AAfgAfn4AH4AB+AAAAAAAAAAAB///gB+AAfgf///4H4AB+AAH4AAfgAH4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYMAeM/mBjNn+AGDDPAAAAAHjww8A8Z/DAAzcN8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf//+AAf/4AH4AAAAB//gAfgAH4AH/+AAAAAAAAAAAAB///4B+AAfgfgAAAH4AB+AfgB+AfgAH4AAAAAAAAAAAH4AH4H4AB+B+AAAAfgAH4AH5+AB+AAfgAAAAAAAAAAAf//4AfgAH4H///+B+AAfgAB+AAH4AB+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/+AD///4AAAAAAAAAAAAAAAAAAAAAAAP///////gAA///gD//+AAAAAAAAAAAAAAAAD//////g/4Pwfg/+AA////4DDBg//////+D///////4P/B/B/+D///////4AD/wH/gMMGD//////4P/4P/B//g//8B//4P//8B///gAP///+AwwYP//gP//g///wH//+AAAAAAAAAAAAAAAAAAAAAAAAAAD//AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/gAP//4AAAAAAAAAAAAAAAAAAAAAAAD///////4AB////A///gAA//gAAAAAAAAAAA//////4P+D8H4P/gAP///+AwwYP//////g///////+D/wfwf/g///////+AA/8B/4DDBg//////+D/+D/wf/4P//Af/+D///Af//4AD////gMMGD//4D//4P//8B///gAAP//AAAAAAAAAAAAAAAAAAAAD//8AAAAAAAA//AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD//////+AAAD/4AD//+AAAAAAAAAAAAAAAAAAAAAAAA///////+AD////+P//4AH///wAAAAAAAAAAP/////+D///////4AD/wH/gMMGD/4P8H/4P///////g//////4P///////gAP///+AwwYP//////g//g/8H/+D//wH//g///wH//+AA////4DDBg//+A//+D///Af//4AAD//wAAAAAAAAAAAAAAAAAAAA///AAAAAAAAP/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA///////gAAA/+AA///gAAAAAAAAAAAAAAAAAAf/wAAP///////gAP///+D//+B/////8AAAAAAAAAD//////g///////+AA/8B/4DDBg/+D/B/+D///////4P/////+D///////4AD////gMMGD//////4P/4P/B//g//8B//4P//8B///gAP///+AwwYP//gP//g///wH//+AAD///AAAAAAAAAAAAAAAAAAAD///8AAAAAAAP//AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAP//////4AAAP/gAP//4AAAAAAAAAAAAAAAAAD///4AD/g/B+D/4AD////g///v//////+D//////+A/8H8H/4P///////gAP/Af+B//8P/g/wf/g///////+D//////g///////+AA////4DDBg//////+D///////4P//Af/+D///Af//4AD////gMMGD//4D//4P//8B///gAA///wAAAAAAAAAAAAAAAAAAA////AAAAAAAD//wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAD//////+AAAD/4AD//+AAAAAAAAAAAAAAAAAf////8A/4Pwfg/+AA////4DDBg//////+A///////gP/B/B/+D///////4AD/wH/gf//D/4P8H/4P///////g//////4P///////gAP///+AwwYP//////g///////+D//wH//g///wH//+AA////4DDBg//+A//+D///Af//4AA////AAAAAAAAAAAAAAAAAAw////8AAAAAAD///AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/gAAf8AAAAAAAAAAAAAAAAAAAAAAAAD///////4AAA/+AA///gAAAAAAAAAAAAAAAD//////+P+D8H4P/gAP///+AwwYP//////gP//////4D/wfwf/g///////+AA/8B/4DDBg/+D/B/+D/+D/wf/4P//Af/+D///Af//4AD////gMMGD//4D//4P//8B///g//8B//4P//8B///gAP///+AwwYP//gP//g///wH//+AAP///wAAAAAAAAAAAAAAAAAMP////AAAAAAA///wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/4AB//8AAAAAAAAAAAAAAAAAAAAAAAA///////+AAAf/wAP//4AAAAAAAAAAAAAAAAP/////+D/g/B+D/4AD////gMMGD//////4D//////+A/8H8H/4P///////gAP/Af+AwwYP/g/wf/g//g/8H/+D//wH//g///wH//+AA////4DDBg//+A//+D///Af//4P//Af/+D///Af//4AD////gMMGP//4D//4P//8B///gAP////AAAAAAAAAAAAAAAAD//////AAAAAAP///wAAAA////8AAAAAAAAAAAAAAAAP/////8AAAAAA////AAAAAP//AAAAAAAAAAAAAAAAP////AAAAAAAAAAAP//AAAAD////AAAAAAAAAAAAAD//////AAAAAAAAAD///8AAAAP///AAAAAAAAAAAAA/////P/P8AAAAAAAAAP///AAAD///8AAAAAAAAAAD/////wAP/8AAAAAAAAAA////AAA/wAP8AAAAAAAAAD/P///AAAAAAAAAAAAAAAP8AD/AAP8AAP/AAAAAAAAAPwP//AAAAAAAAAAAAAAAP/AAD/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/wAAAAAAAAAAAAAAAAAP///wMMAAAAAAAAD/8AAAAP//8AAAAAAAAAAAAAAAP////AAAAAAAAAAAP//wAAAA/////wAAAAAAAAAAAD///////AAAAAAAAP////8AAAD///AAAAAAAAAAAAA/////A//8AAAAAAAAAA///wAAA/8P/AAAAAAAAAAD/////wAP/wAAAAAAAAAAP/D/wAAP8AD/wAAAAAAAAA/D///wAAAAAAAAAAAAAAP/AA/wAD/AAA/wAAAAAAAAD8D/PwAAAAAAAAAAAAAAD/AAA/wAAAAGAGAcAdJxnDPeMAAByUDGASSYD7x0DAAAAAAAAAAAD/8AAAAAAAAAAAAAAAAAD///8DDAAAAAAAAA//AAAAD///AAAAAAAAAAAAAAAD////wAAAAAAAAAAD//8AAAAP////8AAAAAAAAAAAA///////wAAAAAAAD/////AAAA///wAAAAAAAAAAAAP////wP//AAAAAAAAAAP//8AAAP/D/wAAAAAAAAAA/////8AD/8AAAAAAAAAAD/w/8AAD/AA/8AAAAAAAAAPw///8AAAAAAAAAAAAAAD/wAP8AA/wAAP8AAAAAAAAA/A/z8AAAAAAAAAAAAAAA/wAAP8AAAAAgCQAgBSgZJKUEgAASlBJgEmmAIghAwAAAAAAAAAAA//AAAAAAAAAAAAAAAAAP///8AAAAAAAAAAA//wAAAA///8AAAAAAAAAAAAAAD////8AAAAAAAAAAD///AAAAD/////AAAAAAAAAAAA////////AAAAAAAA/////wAAAP//8AAAAAAAAAAAD/////wAP/AAAAAAAAAAD///AAAD/AP8AAAAAAAAAAP////8AAP8AAAAAAAAAAA/wD/AAD/wAD/AAAAAAAAAD8D//8AAAAAAAAAAAAAAA/wAD/wA/wAAD/wAAAAAAAAPwP///AAAAAAAAAAAAAA/8AAA/wAAAAIAkAIAUoGSSlBAAAEpQQYBJpgCIIQMAAAAAAAAAAAP/wAAAAAAAAAAAAAAAAD////AAAAAAAAAAAP/8AAAAP///AAAAAAAAAAAAAAA/////AAAAAAAAAAA///wAAAA/////wAAAAAAAAAAAP///////wAAAAAAAP////8AAAD///AAAAAAAAAAAA/////8AD/wAAAAAAAAAA///wAAA/wD/AAAAAAAAAAD/////AAD/AAAAAAAAAAAP8A/wAA/8AA/wAAAAAAAAA/A///AAAAAAAAAAAAAAAP8AA/8AP8AAA/8AAAAAAAAD8D///wAAAAAAAAAAAAAP/AAAP8AAAACAJAGAFKyUkueOAAByUDpASWkAjyEEgAAAAAAAAAAD//AAAAAAAAAAAAAAAAD///8AAAAAAAAAAAP//AAAAD///8AAAAAAAAAAAAAA/////wAAAAAAAAAA///8AAAAP////AAAAAAAAAAAAP///////8AAAAAAAAP////AAAA///wAAAAAAAAAAA/////8AA//AAAAAAAAAAP//8AAA/8A/8AAAAAAAAAD/////AAAAAAAAAAAAAAAP/AP/AAP8AAP8AAAAAAAAAPwD//wAAAAAAAAAAAAAAD/AAD/AD/wAAP/wAAAAAAAAMAP///AAAAAAAAAAAAAP/wAAP/AAAAAgCQDABSklJK0AgOAQlAKQElpAIghBIAAAAAAAAAAA//wAAAAAAAAAAAAAAAA////AAAAAAAAAAAD//wAAAA////AAAAAAAAAAAAAAP////8AAAAAAAAAAP///AAAAD////wAAAAAAAAAAAD////////AAAAAAAAD////wAAAP//8AAAAAAAAAAAP/////AAP/wAAAAAAAAAD///AAAP/AP/AAAAAAAAAA/////wAAAAAAAAAAAAAAD/wD/wAD/AAD/AAAAAAAAAD8A//8AAAAAAAAAAAAAAA/wAA/wA/8AAD/8AAAAAAAADAD///wAAAAAAAAAAAAD/8AAD/wAAAAIAkBgCUpPSSlBIAAEJQS8BJbwCIIQeAAAAAAAAAAA//8AAAAAAAAAAAAAAAA////8AAAAAAAAAAA//8AAAAP///8AAAAAAAAAAAAAP/////8AAAAAAAAAP///wAAAA///8AAAAAAAAAAAAD////8/8/wAAAAAAAAA///8AAAP///wAAAAAAAAAAP/////AA//wAAAAAAAAAD///8AAD/AA/wAAAAAAAAAP8///8AAAAAAAAAAAAAAA/wAP8AA/wAA/8AAAAAAAAA/A//8AAAAAAAAAAAAAAA/8AAP8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHAGAeAYxyXDJ+MAABBnjJAMSkAjx3kgAAAAAAAAAAcHBwcHBwcHBwcHBwcHAAAABwcHBwcHBwcHBwcHAAAABwcHBwcHBwcHBwcHBwcAAAAHBwcHBwcHBwcHBwcAAHBwcHBycnJwcnJycnJwcHBycnJycnBycnJycnBwcHBwcHBwcHJycnJycnJycnBwcnJycnJycHJycnJycnBwcHBwcHBwcnJycnJycnJycHBycnJycnJycnJycnJycHBwcHBwcHBycnJycnBycnJycnJycHJycnJycnJwcnJwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcFBQUFBwcFBwcHBwUFBQcHBwUFBQUFBQUHBwcHBwUFBQUFBwcHBQUHBwUHBwUFBQcHBwcHBQUFBQcHBQUFBQUFBwcHBwUFBwcHBQUHBwUFBQUHBwcHBwcFBQUFBQUFBQcHBwcFBQUHBwcFBQcHBwUFBQUFBwcHBwcFBQUFBQcHBwcHBQUFBwcHBwUFBQcHBwUFBQUFBwcHBwUFBQcHBwcHBwUFBQUHBwcHBQUFBwcHBwUFBQUFBQcHBQUHBwcHBwcFBQUFBwcHBwcFBQUFBwcHBwUFBQUFBQUHBwcHBwcHBQUFBQUHBwcHBwUFBQUHBwcHBwUFBQUFBQMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMAAAAAcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHAAAAAAAA", "codigo": "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BgMOCHkeAMXNLpHBDBD1PgceOMMukToQobfIw4aSOguhPCEMob44Aa8yC6E6DaG3KOQh9KCvzeGRIfqgPgHN4ZE6EKG3woaSIQChPgIyBqEiB6ERBAAZfj13IE8qB6FeI1YaE08aE0d4oTwgDioHoSMjXiNWGhNPGhNHGhMqB6FzI3IjIyN3I3ixKAw6BqGHxU8+D5HBGAGvdzoGoYdZzS6ROgahhzxYzS6RKgehEQUAGToLobcgBn63KAI9d146BqHGCMMukR4DDggYEB4IDgYYCh4MDgoYBB4YDh4+Bs0ukXkyEKE+DzIRoT4HHhzDLpEhEKE1IA4+Bx44zS6RHgA+CsMukSERoX63KAI9d18+CsMukQAAAAP8AAf+AA//AB//gAPwAAPwAAP4AAf4AA/8AA/+AA//AA//gA//8A//8A//wA/+AA/8AA/8AA/8AB/+AB8+AB4eAD4fADwPADwPgHwHgHgHgHgHwHgDwPAD4PgD8AAAAAA/AAB/gAD/wAf/gAAPwAAfwAA/wAA/wAB/wAD/wAH/wAP/wA//8A//8AP/8AB/8AA/8AA/8AA/8AB/+AB8+AB4eAD4fADwPAHwPAHgPgHgHgPgHgPAHgfADw/AHwPAM8wzzDPMM8wzzD/sP+wD+AP4A8ADwAfgA8ADwAPAB+ADwAPAA8ADwAfgA8ADwAPAA8ADwAPAA8ADwAPAA8AB/4AH/+AP//Af//gfgfgfgfgfAPgfAPgfAPgfgfgfgfgfw/gfw/gfw/gfw/gfw/g///z///////8HgeAPw/AYZhgYZhgYZhgYZhgPw/AHgeAAAAAAAAAAAAAAP8AAf+AA//AAPwAAJAAAf4AA/8AB/+AD//AH//gP/AAf8AAf4AAf4AAf8AAf+AAf/AAP/AAP+AAPvAAfHgAeDwA8B4A8A8B4A8B4AeDwAeDwAPDgAPjAAHgAAAAAAAAj7/8AAE/+/wAAn///AACf//8AAE/+/wAAI+//AAAAAAAAAAAAAAAAAH///4AAA/////AAD/////wAH/////4AP/////8Af/////+A///////A///////g///////w///////4P//////4D//////wA/////+AAH////gAAB///+AAAD////AAAH////gAAP////wAAPAAAPAAAOAAAHAAAMeAHjAAAM/APzAAAMzAMzAAAM/APzAAAMeAHjAAAMAAADAAAMAGADAAAMAPADAAAMAfgDAAAMAfgDAAAMAPADAAAOAAADAAAPAAAHAAAPgAAPAAAHgAAPAAAHn//zgAAHmADPgAAHz/+fgAAD4AA/gAAD8AB/gAAD+AD/gAAB////wAAB////gAAA////AAAAP//8AAAAAAAAAAAAAAAAAAAAAA//fE/3/y///5///5/3/y//fEAAAAAAAAAAH4AAAAAAAB/AAAAAAAA/4AAAAAAA//AAAAAAAf/4AAAAAAP/8AADhAAP+SAAA7+Ef/AAAAf////gAAAH////wAAAB////4AAAA/////AAAAP////gAAADv///4AAAA5///+AAAAOP///AAAABx///gAAAAc/hD8AAAAHP4A/AAAAAjuAPwAAAAA7gD8AAAAAO4A/AAAAAHkAF4AAAABwgCOAAAAA8IAjwAAAAOCAIcAAAAHg8PHwAAAD8fn5+AAAAeDw8PAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAfgAAAAAAAH8AAAAAAAD/gAAAAAAD/8AAAAAAB//gAAAAAA//wAAOEAA/5IAADv4R/8AAAB////+AAAAf////AAAAH////gAAAD////8AAAA////+AAAAO////gAAADn///4AAAA4///8AAAAHH//+AAAABz+EPwAAAAc/gD8AAAACP4A/AAAAADuAPwAAAAA7gD8AAAAAO4A/AAAAADkAFwAAAAA5ABcAAAAAcQATgAAAAHvAP8AAAAD/4H/gAAAAe8A/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB+AAAAAAAAfwAAAAAAAP+AAAAAAAP/wAAAAAAH/+AAAAAAD//AAA4QAD/kgAAO/hH/wAAAH////4AAAB////8AAAAf///+AAAAP////wAAAD////4AAAA7///+AAAAOf///gAAADj///wAAAAcf//4AAAAHP4Q/AAAABz+APwAAAAI7gD8AAAAAO4A/AAAAADuAPwAAAAA9AB8AAAAAHgAOAAAAAB4AHgAAAAAOABwAAAAAD4A/AAAAAB/Af4AAAAAPgD8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADhAAIAAAAA7+EfwAAAAf///+AAAAH////gAAAB////4AAAA/////AAAAP////4AAADv////AAAA5////4AAAOP///+AAABx////wAAAc/hD/+AAAHP4A/fwAAAj+APz/AAAA7gD8f4AAAO4A/H/AAADuAPw/gAAA5ABcH8AAAOQAXAeAAAHEAE4BAAAB7wD/AAAAA/+B/4AAAAHvAP8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAfwAAAAAAAP+AAAAAAAP/wAAAAAAn/+AAAAAB///AAAAAA//EgAAAAA//gAAAAAAf/gAAAAAAP/8AAAAAAH/+AAAAAAD//gAAAAAB//4AAAAAA///gAAAAAf//+AAAAAP///wAAAAH///8AAAAD//vvAAAAB//x/gAAAD//4HwAAAB//8B+AAAA//+B/AAAAf//A/AAAAH//gHgAAAD//wAAAAAA9/8AAAAAAOf/AAAAAADj/gAAAAAA4f4AAAAAAOP8AAAAAADj3AAAAAAA4/+AAAAAAEH/wAAAAEWaKZphmimafZopmg+AH8A44HBw4DjgOOA4//j/+OA44DjgOOA44Dj/wP/g4PDgcODw/+D/wP/g4PDgcOBw4PD/4P/A4ADgAOAA4ADgAOAA4ADgAOAA4ADgAOAA//j/+OA44DjgOOA44DhwcHBwOOA44B3AHcAPgA+ABwBTSEVSSUZGOgBCQU5ESURPOgBCQUxBVkEAMSAgVU4gSlVHQURPUgAyICBET1MgSlVHQURPUkVTADMgIENPTlRST0xFUwA0ICBDUkVESVRPUwBQVUxTQSAxLCAyLCAzIE8gNAAoQykgMjAyNiBLQlpBIFNPRlQAQ09OVFJPTEVTAEpVR0FET1IgMSAtIFNIRVJJRkYAUT1BUlJJQkEgIEE9QUJBSk8AWj1ESVNQQVJPAEpVR0FET1IgMiAtIEJBTkRJRE8AUD1BUlJJQkEgIEw9QUJBSk8AQj1ESVNQQVJPADUgSU1QQUNUT1MgUEFSQSBHQU5BUgBQVUxTQSBDVUFMUVVJRVIgVEVDTEEAREVTQ0FOU0UgRU4gUEFaAEdBTkEgRUwgU0hFUklGRgBHQU5BIEVMIEJBTkRJRE8AUkVTVUxUQURPAFNJTiBCQUxBUzogRU1QQVRFAEJBTEFWQSAgICoqKiAgIFVOIEpVRUdPIERFIEtCWkEgU09GVCAgICoqKiAgIERFU0FSUk9MTEFETyBQT1IgQUxFSkFORFJPIE1BUlRJTkVaICAgKioqICAgTVVTSUNBOiBBTEVKQU5EUk8gTUFSVElORVogICAqKiogICAoQykgMjAyNiBLQlpBIFNPRlQgICAqKiogICBaWCBTUEVDVFJVTSAxMjhLICAgKioqICAgUFVMU0EgVU5BIFRFQ0xBIFBBUkEgVk9MVkVSICAgKioqICAgAAAAADgAAHwAADgAAAAAAA8AAB+AAB+AAA8AAAP//wf//wP//wA8HgA8DwAcBwAAAAAB/4AAAAf/4AAAD//wAAAf//gAAB+B+AAAH4H4AAAfAPgAAB8A+AAAHwD4AAAfgfgAAB+B+AAAH8P4AAAfw/gAAB/D+AAAH8P4AAAfw/gAAD///AAA////AAD///8AAAeB4AAAD8PwAAAYZhgAABhmGAAAGGYYAAAYZhgAAA/D8AAAB4HgAAAAAAAAAAD/AAAAAf+AAAAD58AAAAfn4AAAB4HgAAAHgeAAAAfn4AAAA+fAAAAD58AAAAHngAAAAf+AAAAA/wAAAAD/AAAAAAAAAAAAAAAAAAAAAAAf+D/8f/7/////bbZttttt223/////223bbdtt223bbdtt/////9tt223bbdtt223bbf////9ttn/+f/4//B/4ADx+fn5+PAAvnrWeO58CGKBNoGqgAxahY6GkoQXUAAy9AAyoABmNABmNAAx+AAyNABmoAAzUAAy9ABmoABmoAAy9AAzUABm9ACUAAAzUAAy9AAyoABmNABmNAAx+AAyNABmoAAzUAAy9ABmoABm9ABnUADIAAAyfABmfABl+ABl+ABl+AAyNAAyoABnUABm9ABmoABm9AAzUAAy9ADIAABn//08DDGsEDE8DGU8DGU8DDPYEDE8DGU8DGGsEGU8DGU8DDGsEDE8DGWsEGWsEGE8DDGsEDE8DGU8DGU8DDPYEDE8DGU8DGGsEGU8DGWsEGU8DGU8DGU8DDPYEGfYEGfYEGfYEGfYEDE8DGU8DGU8DDGsEGU8DGWsEDE8DDGsEGWsEGWsEGf//qAEMeQEMqAEMUAENGwEMUAENqAEMqAEMqAEMUAENGwEMUAEMeQEMGwENqAEMUAENGwEMeQEMqAEMUAENeQEMGwEN4AAMGwEMqAEMeQEMqAEMUAENGwEMUAENqAEMqAEMqAEMUAENGwEMUAEMeQEMGwENqAEMUAENeQEMGwENqAEMUAENGwEMUAENqAEMqAENPQEM/AANPQEMqAENPQEM/AANPQEMqAEMqAEMUAENGwEMUAENqAEMeQENGwEMqAENUAEMeQEMqAEMeQENGwEM4AANGwEMeQENGwEM//+oASWoAQyoARmoARlkASV5AQx5ARmoARmoASXcAQzcARkWAhkWAiU2Agw2AhmoATIAABn//58GMp8GMp8GJGsEJZ8GPpEFJSwEPp8GMp8GPv//TwMZyAIaNgIZyAIaTwMi8wIlTwMZyAIlyAIlTwMayAIkTwMayAIZNgIayAIj//8IZCACFTwgAgUAIAIZACACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgIAAAAAABQkKMAAQAMEAAAAAAAAAAAAAAAAAMAAABaAAAAAAAAAAAAAAAAAAcgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAKHgAAHkBS/wASz0BMlABGXkBZAAAGXkBS+4AS/wAMhsBGT0BZAAAGfwAS70AS9QAMu4AGfwAZAAAGT0BMhsBMvwASz0BGVABMnkBlgAAMv//5gVk5gVk8AMZ5gV95gVLtwNL5gUyawQZ9gR95gVk5gUy9gQytwMZ8AN95gUyawQy8ANL5gUZ8AMy5gVk5gVk///zAjJ7AjP4AWOhAhnzAjJ7AkvzAkvzAkvzAjI2Ahl7AjL4AUvzAjJ7AmR7AjLzAhmhAjL4AUvzAjI2AjKhAkvzAhmhAjLzAjN7AjL4AWP//wAAACf4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM/QAABCJAiCSEiARAkAAABAAAgiQQBABAAEgCSAAAAAn+QAABMEShIAAkAQGAAACABAAQAQIAIAIEAggAgAAACf2AAAGACCQQgCAECACEAAAAAAIAAgQAABIgAAgAAAAJfgAAAQEJBCEgEgRn3+3vGbkwACIIAAhAgAAABAAAAAv9AAAAoEQBCAGZn57P/2/+f/2AAQAAgAAACBAAAAAAE34AAAFAQBEAXv9qSQAgEAf+f74AQgACAEAIAAAAAAAM/gAAABAQQAK7vZEEgAAAAAX7/wACAAAAAAIAAAAAAAp+gAABJJJJJJJJJJJAAAAAAAAAAEAAAAAAAAAAAAAABv5AAACBEiIEEAJhGIAEAQACBACBAJACAEAAEAAAAAANfQAAAAQACAkkgiRIIAAAAEBEAhBAQgIAACAghAAAAAy8AAAAEkIBBCIIgICEP8AAAABABEAAQIQAAEEAAAAADf6AAACQQEEIAEiGX//zebe/yAAAQIQAAACCAAAAAAAJPgAAAIQBEEAD9hg+2Su3/5//wAAggAggQAAAIAAAAAl+AAAABBEEAF++6yABAAJB/33+AAAhAAAAACAAAAAAE30AAAIEAQQD73xgQCBAAAAB//4AAAgAgQgAEBAAAAAL/gAAASQAAAAAAAAJAAAAAAAhEkkJEAAAAAAAAAAAABJ+AAACJAAAkQMhCAIAAAQAgCAQCEIAgAEEAAAAgAAABP0AAALBIkJAQhCAEgAAAAAAAECCCAAAIAAAAAAAAAAG/wAAAkAQkEEIggAEAX/yAAAAAEAEIAQAQAAEAAAAAAS8AAACCBIQQgQDI//+Rlht7+QACAAAQQgAABAAAAAADP6AAAIRIEQABndM/RF5lf/X7/AAAggAgQIAgAAAAAAM/QAAAiEEQADZ+ekkEAgAAH3f/wAIABAAAgAAgAAAAAn9AAAAwSAQAz77BhkIAAkABH//AAgAhAAAAAAAAAAACX8AAACRTJSTJSSSQSAAAAiSBAAAIEJIgQAAAAAAAAAJ/YAAAIikkQBIDAJiQAAAAAgAhCAIABAQAAIAAAAAABM+AAAAGAgQEhBEEgCAAAAAAAgECACISACEAIAAAAAAEnyAAABMhAQQQCAAAxpmv/AAAAgRAIIAAACEAAEAAAATvwAAAGIAhABAJhn//7mkT3+4ACCCEAAAAAAAIAAAAAb8gAAAQAgBCA/5+PkBHG3/3v/wAEAAgAAAIAAAAAAAE70AAACIQBAAt32UQIAAAAIf3/0AAIQABBAAAAEAAAAM/IAAABAIQAb++pCBEghAAAH//wBAgAAIAAAAAAAAAA18gAACEBCBCBBCERQIAASAAIBJJIQAABAREiSSAAAADXwAAACCAghIQJCQCBAAABAAhACCICQAgACAERAAAAAJ/oAAAQJBBIIEARDEAAAAAAEBAEEgAACEEAgCEAAAAAn+AAABACEhBBIEAgIfi79tsAAAgCAAECEEAAAQAAAACXyAAAEAiCEkABiXf+35I7N8/AAAEAAIAQgQAQCAAAATfgAAAQiCIEANzrbaSYdjf+9/+AIEIAQAAAABAQAAAAn+AAAAghICAb/3lhIAAAAAr+//ACAAAQAAEIAEAAAAE34AAAEEggAH+/SAJMAhEgACf/8AAAgQAAAAAEAAAAAE/gAAAMSCIEDCEEQhgAAgAQAIAAAQCAEAAAAAAAAAAAV/AAACMEhCBRIABIMAAAABEABCAICAIAIQEEACAAAADPyAAADAESAggSBAEEAAAAAAABAAAhEAAACAAAEAAAANvkAAAJIICEEAkBBI9bhJnsgAAAIBCEEAAAAgAAAAAA1+AAABECIIAACbhf//7tj9//4ABABCAEAAAIAAAAAACX4AAAAiIIgAHf7ntJBhEn/zv/gAAAIQBAgCAAAAAAAMfgAAAiCAiAFu56gAJAAAAC+//wACEIQAQAAAAAAAABN7AAAAQCCCB/P1JJIshACQAn//AAgAAEAAAAABAAAAE75AAAEBIBYSCIRAiCAAgAAIAQRJASCIAgIAAAAAAAAS/IAAAIQBEJAASSAwQAAAAAEQCBAEAQIAAQAAAAAAAAZ+AAACEYQJCDAMQkEAAAAAAAIBCIAAAgAAABAAAAAABP0AAAIAgkIQSACBDP32cvbOAAAQRAAABAgQgIAAAAAF/gAAAEQAgJCAZmt//7/ez/v/AACCACEEAQAAAAAAAAz9AAACgAgCADd33bQAWIzP+e98ABCAABAAAAgIAAAAE/2AAAAICCBBbe5oiAEAAAAT9/8AAAAAEAAAAgAAAAAM/AAAAhIECA2/6QCSIhCIBAA//wAAgQAAAAAAAAAAAAl9AAABKAyAgCAhEgYAAAAgIJAgAEQAIAggAIACAAAACr4AAAEBMAQCSQBJBAAAAAIAAQBEIBAAIEAAAEAAAAATfgAAACQggEIEgRAIABEAAAAAICIQQCAhAAIAgAAAABN9AAAAZCAQhAICIad//5Jv/sACAAAhAAAgAAIAAAAAEn0AAAIJECQCAP9r/yzVf/v/94AACAgAACAABAQAAAAG/QAAABkCQCA33b3ASAJBP/3//gAACECAAIAAAAAAAAm8AAABQkIAA7+fECAAAAAAFf/+ACBCEAABAAAAAAAAC74AAACAkAAN7+oSLJhCAAEEv/8AIAgEACSAAAAAAAAZ/oAAACQAgA//yISBkwgkkEA//wACACAIBJAAAAAAAA29AAABAgBAA/sQGGACAgCBIEH+AAAQAAAAPaAAAAAAGf0AAAASAQQB9xIAgSSQhggQGfwAAQQBPQAA3AWAAAAd+gAAAkAhAgE4BJ23d2D3/t2Q/AAECCAD82wCEAAAAAz6AAAACAkAAbAUr+36AF9/PYSYAQRAAIQm3AD/gAAATv4AAAAgAgQAcgBFkAQAkFJACMAEAQAAAAcu33bAAADN/QAAAIIQAIAESggkgQCMAITJAAAAAEL/+BP/28AAADv8ABAAAAAAAAEiSyXbluDsSMIAAASAJICf/V9/wAAABnwAAAEAQgAG/9Ik0kQABCQBD/8AACAAAEtAAAAAAAAT/IAAAECCAAf7QsIEAJCACAgG/gAIQEAAAC/gAAAAABN8AAABACAAAd8AABEiJDEgAIHeAIAAAF9JgDkEgAAACb2AAAARAAgBuFMm3/sBNuyWRHgAgAIIAv9sAIBAAAAn/IAAAIBAAgCETCs/2wB3/sZAmAAAAAAALfcBn0AAADP6AAACCRBAgHJAAMEgIAQZAA5gECAIQAAxq3fbQAAAM/wAAAAgQIIQEzKSE4ACJIAkrAAAACAIv/ZL/9PAAACa+AHYAAAAAAACaTJhfvOgEwkQAADwIAUyf/zb/8AAABv9AAAASAggD//QCRJIkREABDf/ACACAEAL6AAEAAAAGn4AAACQICAD+wAAgQAAAAIBAv4AIAAAAAAu0AAAAAAc/gAAAEgCIAG+CAhEmGFBAAAk/AAEIABfpkA8GgAAAC78AAABABIAANhKf/++yN/7I0J4AABJygD9sgIBQAAAG30AAAAhBCAgYCYb9/BAP7QzAngCCAAAABN/gH/AAACbfIAAAIABAgBkEQIACABIBIAiQAACAACQACd960AAAT76AAABAAIIACCUgZsAQAYJEyGAAAQAACbdif/NwAAAn/iP+AAAAAAAAIkVgy+74EgjMABP+SBJSX/+vv/AAAAJvQAAAgIgAA//pEJIMgRASSCX/wACAAgAJ7oAAAAAAAv+AAACBAgAA/aEMRBAIAggRBG+AAACAAAAC/QAAAAAB7yAAAIBEAEBviAmbYUQTMAQCfwAEAAAF/fATAoAAAAT/gAAAEiAIADYNn///YB9/+mY+AAREnKFb74DAcAAABn8AAACCAAIAHIiTN7mAJvErAkYACCQAABe/60egAAATfwAAAAiIBAAIYRIBJCAIAAACcAAgCACXsgUz7vAAADL+gAAAEQAAAAMxGRmGRhTIElYgAAAAgBJPaT/6cAAAGX4L/N3sgAAAASUzALNj9AMkIv///sgEsH//7N/wAAADP4AAACQgQQHf6ASQQBACAAID/4AAAhAAAX2AAAAAAAJvYAAAEEBBAP3gYREAgiAABAF/gBBCABAAAdwAIAAADL9AAAAkABEAPYAkbNxxJIywEjkAABAAB/ZsBpIAAAAGfoAAAACAIEB8JTf//4gf/78oPgCABJdkX7NAWXAAAAN/gAAAIAggAByGSe7gwAO/4QBoAAAAAAADf/pt8AAAFb+AAACCAQAICJiSACwIJAAAEyQBAgCCW8gB7u2wAAAM/wAAAAAQAAAASkJLk7CUwQJQgAAAAgAAS/m/+/AAAA9+C/8kO/////SFDMC33nQIxSLb7/5IIQQP/1t38AAABN6gAAABAhAB+yAiREBEiIkAEv+ABBAAAAB3YAAAAAAHPwAAAEQRCAD/xICSYAAIREBId4AAAACEAAB2ACAAAAM/QAAAARCAAHcAkm+2mGzuQkC/AAgAAAH/2ASMAAAAA59AAACkBIEANBN8/v+AP//nmJkACCJBGSf9gWXwAAAJ3oAAAAhBAEAcISTbwABB7lgBGgIggAAADd//r1AAACT+gAAAIBAQgASGiASQAASBAIkgAAAgCW/4Av+zcAAAJ38AAAAAAAAAAIpIzn26TbRJLIAAAAAAABv8r/3gAAAm3gf//wAAAAAWEM0Emb/4AFGSb3/+SAhAL/9Wf/AAAATfgAAAmBCAALtgCQECQCAAJAD/gBAAAIAAn5AAAAAABP+AAAABAAAAf8EKSIwYQBECBL+AAggAJIAAfwCQAAAG/wAAAEhCBAB3INu/7qQbc0mIvwAgQEAB23YDIQAAAAz/AAAAABAEADQb1v7/kB/f+dIaAACICJJmzYB28AAADP8gAACCBBIAPQEm2wSQEGNIBNIAAAEAAAf3/7NwAAAO3yAAAAhCAgEEYGSA0AASAEgpCAgkAgF/+AP/+/AAACd+gAAAIAAAAAIlJTTPm3pkQSkAAAAAAAAP/m/34AAANv4H////tIAAAEYyAM7s6AUSQ/3//kgCAAf/tZ/wAAADP0AAAAIEAgD+YEggCBIABAEDf4AAgIQAAD3kAAAAAANvQAAAkCIQAH3AIAIBBBIAIJC7ABAAQBsgAB0A0AAABN+AAAACABAAXwkk23tkk1/4Ij0AAAAAAn+2AAAAAAAG/4AAAEiAEABkjMN/+4Ab389kTgAQASIEk7bAn+AAAAa/AAAAICAACDhAS2wQQBAZJAC0AEQQAAADf//9sAAAS38AAACCAEgACRsQInAQAxAElkAAgEAE3/4B/9jwAAAZ3oAAAAAAAAABJJM0P92+SRTJQAAAAAAAD/9f//AAABm+C////////+pJJgJubzAgrIHf//5IAAAD/K3/8AAAT/4P/////////wlMEyafxAgkhfv//0gAAAnf7v/wAABOfg/////////80SX4nYwWeiQP//3/IAAEyG/9+2AAABb8D////////vD5krW//5ITSP////+EAAIAS1u3sAAALPg/2k57//v/4B/2wEqaAAdH////u5IAAJPxvwvAD//9377ff//23v/AA/P27GVLwB/////v/////gAAASD//u/++3//+7+//4H0nPJ//ga4///3//97//////yCR///v/v//3+////+D31AbfwERf///3////++//+//4lt//v/////73f/v/ggwZI/4ElIH///f/3//+/+/3//9NAAACZ+Z/////////8AWMy29kyBMRP///8IAAAGV3Lf8AAAJ/wf3///////+cARbo32QRkUX////yQABYEv/n+AAAA3vB////////fg/TLJbJLQQWH/////kABAAghulPAAAAs4PLb33//e/8Af7eikizBvh///9v/6AAAV+X+3wB//t/e39///3/f/wAH7+zM578g//////v/////ABMyB//v93+//+97///+D/p+f7/AS+P//////7//t///8GRf/++3////9/u+//jPnQH/8JDP3////f//+//+2///JH//++///7//+/v/4AAFoP8CWGB////9////+//39//rQAAA33gf/////////hpImmS2CMEkH////SAgABlfdt/AAACW8B/////////nIjbJiUAktQD////+kABMxH/v+wAAADfyf//////bf4H4aWRPeQCkZ/////5IAEAGAtwdAAABL7M+3t/f99//AH/kohTWDH4f////+/wAARM3/t+A//v+9/b///3t//8AB/P/fmn8gP/////v/////+AAiUf//t/f///9/7/7/h+sP7buAQdz////////f/////kTP//7/37///9/9//w+2yA+/IEP///7/f/////f////wJ///7///73e++//+AABaD/CMDA////v////f+//7//7MAAAGf4P/////////4Cps2UpAJZIh////0AAAFmX+W3wAAAd/h/////////45CTZW1qwZGI/////oAALzNf+/yAAAJl8H////+y+++B+mdLbYwCkp//9//+CAAAEYHcjYAAAFNv7eb2/933/4A//cjFECV4P///7///wAAAk35/wP//u72/93/3////AAP8/5Mv8gD////////////+CIkH/9/9+3///93/7/w/5R23+AQx9////////ff+///4SLf//u/v/+9v3t/v8N2bIftiZT3/////3//37+//f/+Zv//vvff7/++/9//gAANEfgEggP/+///3///f/v////eAAAE5+B/////////8FKT1vy2LTFCf///8IAAFuT/ptcAAABvwP////////+eRDzZtulhYIv////4QAjMY//v+AAABn3D////9/77/gf6ciLbAAhsP//3//kAAAAQBei6AAADd/e8/v///fv8APv1IMQ0x+D////7///wABABDbwH/9+/v+9///9t//wAD7zf2/+cA/////////////wJkh//7f+/3/vv397/8P/QP7bgQh+f///////f/v9//+CT//9/+/////fv/v/GHNkH/yREZ///+/3//////2///hD//+////+7//v//4AAC0DwAAAD///v//////vf////5gAAAn/gf////////+AUZdvvb86RQf////CAIFuyv6m3AAAC78D/////////DwGuZu/cmDkH////+kAiczL/v+0AAAHPg////1m3v/4D8mYSTNCAtb///bf5IAAAHQfgbAAAH/797++3//9//AB/2c0ltBXA/////////gAAAEJmB//9/e2///9//7/8AAfPd///Nwf/////t///////BEk//7/e//3/u/77/+D/6h//oiAPn///////f/vv7//yTO//33///fv/v/f/yTZaBvcBI2f////3///+9/f/v/8J////3/////vvu/8AAAtAcAAEA////7////7//3v//+EAAANbwf/////////mJS//////xJD/+//2QAAfS//ObQAAALvB/////////w8gXzb/dpKLB/////oAAkmbfvf2AAAJd8H///nf/+/8A/6xSfBSCb4////t/CAAAEwH8HwAAP//vvt7/73b3/4AfP7JOcsfgf////f////gAAAQSQf/9+///f/999//+APj89t//jeH////////7////xBJP//++/7///77///h/ygf/eCJL7///////////v//8SG///f//+/vu////8kzNgf9AirF//9/3///9///3f//Jv//vf///vfvv///AAAFgCAACAf/77//9//77///3//0AAAA3+B/////////zCCb/zexv/IS////8ECBNGD/U8wAAATvwf////////8PpdPJP/bKYL/////4QAmARE329gAAAl3D/b2e9/77/AP9jQQnCAF6f//+/vwAAAA+C/C+ACf/9++/3v/////8AD/3akpZbwH//////v///gAAARIP/3+7u//////+//gP8/z93/wfh/////////////+DJj//b+/v//7/v9//4f3zC//EQJ/////7///+/9////gk/7/97v/////9v/+CTG0H/hKawf/9///////+/v///xD//+////f+//7//wAABYAgAAAH/////v/////f////8g=="};
+
+  function b64(cadena) {
+    var bruto = atob(cadena), a = new Uint8Array(bruto.length);
+    for (var i = 0; i < bruto.length; i++) a[i] = bruto.charCodeAt(i);
+    return a;
+  }
+
+  var fuente = b64(DATOS.fuente);
+  var pantallaCarga = b64(DATOS.pantalla);
+  var codigo = b64(DATOS.codigo);
+
+  var rom = new Uint8Array(0x4000);
+  rom[0x0000] = 0xf3;                       // DI
+  rom[0x0038] = 0xfb;                       // EI   (manejador de la IM 1)
+  rom[0x0039] = 0xc9;                       // RET
+  rom.set(fuente, 0x3d00);                  // juego de caracteres, donde la ROM real
+
+  var maquina = new BalaVa.Spectrum();
+  function arrancar() {
+    maquina.cargar(rom, pantallaCarga, codigo, 0x8000, 0x8000, 0xff00, 0x5c3a);
+  }
+  arrancar();
+
+  // --- pintado ---------------------------------------------------------
+  var lienzo = document.getElementById('pantalla');
+  var ctx = lienzo.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  var imagen = ctx.createImageData(256, 192);
+  var pixeles = new Uint32Array(imagen.data.buffer);
+  var marco = document.getElementById('borde');
+  var APAGADO = [0x000000, 0x0000cd, 0xcd0000, 0xcd00cd, 0x00cd00, 0x00cdcd, 0xcdcd00, 0xcdcdcd];
+  var BRILLO = [0x000000, 0x0000ff, 0xff0000, 0xff00ff, 0x00ff00, 0x00ffff, 0xffff00, 0xffffff];
+  function abgr(rgb) {                       // el buffer va en ABGR
+    return 0xff000000 | ((rgb & 0xff) << 16) | (rgb & 0xff00) | ((rgb >> 16) & 0xff);
+  }
+  var PAL = [APAGADO.map(abgr), BRILLO.map(abgr)];
+  var fotograma = 0, bordeActual = -1;
+
+  function pintar() {
+    var mem = maquina.mem, destello = (fotograma >> 4) & 1;
+    for (var y = 0; y < 192; y++) {
+      var base = 0x4000 | ((y & 0xc0) << 5) | ((y & 7) << 8) | ((y & 0x38) << 2);
+      var attrBase = 0x5800 + (y >> 3) * 32, fila = y * 256;
+      for (var c = 0; c < 32; c++) {
+        var b = mem[base + c], a = mem[attrBase + c];
+        var tabla = PAL[(a >> 6) & 1];
+        var tinta = tabla[a & 7], papel = tabla[(a >> 3) & 7];
+        if ((a & 0x80) && destello) { var t = tinta; tinta = papel; papel = t; }
+        var x = fila + c * 8;
+        for (var k = 0; k < 8; k++) pixeles[x + k] = (b & (0x80 >> k)) ? tinta : papel;
+      }
+    }
+    ctx.putImageData(imagen, 0, 0);
+    if (maquina.borde !== bordeActual) {
+      bordeActual = maquina.borde;
+      marco.style.backgroundColor = '#' + ('00000' + APAGADO[bordeActual].toString(16)).slice(-6);
+    }
+  }
+
+  // --- sonido: sintesis del AY de tres canales -------------------------
+  var audio = null, ganancia = null, siguiente = 0, sonando = false;
+  var MUESTRAS = 882;                        // 44100 / 50
+  var PASO_AY = (1773400 / 16) / 44100;      // ticks del contador por muestra
+  var cuentaTono = [0, 0, 0], nivelTono = [1, 1, 1];
+  var cuentaRuido = 0, lfsr = 1, nivelRuido = 1;
+  var ultimaEntrada = 0, ultimaSalida = 0;   // para quitar la componente continua
+  var VOLUMEN = [0, 0.006, 0.008, 0.011, 0.016, 0.022, 0.032, 0.045,
+                 0.063, 0.089, 0.126, 0.178, 0.251, 0.355, 0.501, 0.708];
+
+  function tono() {
+    if (!sonando || !audio) return;
+    var ay = maquina.ay;
+    var per = [ay[0] | ((ay[1] & 15) << 8), ay[2] | ((ay[3] & 15) << 8),
+               ay[4] | ((ay[5] & 15) << 8)];
+    var perRuido = (ay[6] & 31) || 1;
+    var mezcla = ay[7];
+    var vol = [ay[8] & 15, ay[9] & 15, ay[10] & 15];
+    var buf = audio.createBuffer(1, MUESTRAS, 44100), datos = buf.getChannelData(0);
+    for (var i = 0; i < MUESTRAS; i++) {
+      cuentaRuido -= PASO_AY;
+      while (cuentaRuido <= 0) {
+        cuentaRuido += perRuido * 2;
+        lfsr = (lfsr >> 1) | ((((lfsr ^ (lfsr >> 3)) & 1)) << 16);
+        nivelRuido = lfsr & 1;
+      }
+      var v = 0;
+      for (var c = 0; c < 3; c++) {
+        var p = per[c] || 1;
+        cuentaTono[c] -= PASO_AY;
+        while (cuentaTono[c] <= 0) { cuentaTono[c] += p; nivelTono[c] ^= 1; }
+        var conTono = !((mezcla >> c) & 1);
+        var conRuido = !((mezcla >> (c + 3)) & 1);
+        var salida = (conTono ? nivelTono[c] : 1) & (conRuido ? nivelRuido : 1);
+        if (salida) v += VOLUMEN[vol[c]];
+      }
+      v /= 3;                                  // los tres canales, sin saturar
+      ultimaSalida = v - ultimaEntrada + 0.995 * ultimaSalida;   // filtro de continua
+      ultimaEntrada = v;
+      datos[i] = ultimaSalida;
+    }
+    var f = audio.createBufferSource();
+    f.buffer = buf; f.connect(ganancia);
+    if (siguiente < audio.currentTime + 0.02) siguiente = audio.currentTime + 0.06;
+    f.start(siguiente);
+    siguiente += MUESTRAS / 44100;
+  }
+
+  var botonSonido = document.getElementById('sonido');
+  botonSonido.addEventListener('click', function () {
+    if (!audio) {
+      audio = new (window.AudioContext || window.webkitAudioContext)();
+      ganancia = audio.createGain();
+      ganancia.gain.value = 0.6;
+      ganancia.connect(audio.destination);
+    }
+    audio.resume();
+    sonando = !sonando;
+    siguiente = 0;
+    botonSonido.setAttribute('aria-pressed', sonando ? 'true' : 'false');
+  });
+
+  document.getElementById('reinicio').addEventListener('click', function () {
+    arrancar();
+    estado.textContent = 'pulsa una tecla para empezar';
+  });
+
+  // --- teclado ----------------------------------------------------------
+  var MAPA = {
+    KeyQ: 'Q', KeyA: 'A', KeyZ: 'Z', KeyP: 'P', KeyL: 'L', KeyB: 'B',
+    Digit1: '1', Digit2: '2', Digit3: '3', Digit4: '4', Space: 'SPACE', Enter: 'ENTER',
+    KeyM: 'M', KeyN: 'NN', KeyH: 'HH', KeyO: 'O', KeyI: 'I'
+  };
+  var estado = document.getElementById('estado');
+  var jugando = false;
+  function marcarJuego() {
+    if (jugando) return;
+    jugando = true;
+    estado.textContent = 'en marcha · 50 fps';
+  }
+  window.addEventListener('keydown', function (e) {
+    var t = MAPA[e.code];
+    if (!t) return;
+    maquina.teclas[t] = true;
+    marcarJuego();
+    e.preventDefault();
+  });
+  window.addEventListener('keyup', function (e) {
+    var t = MAPA[e.code];
+    if (!t) return;
+    maquina.teclas[t] = false;
+    e.preventDefault();
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-tecla]'), function (b) {
+    var t = b.getAttribute('data-tecla');
+    function abajo(e) { e.preventDefault(); maquina.teclas[t] = true; marcarJuego(); }
+    function arriba(e) { e.preventDefault(); maquina.teclas[t] = false; }
+    b.addEventListener('pointerdown', abajo);
+    b.addEventListener('pointerup', arriba);
+    b.addEventListener('pointerleave', arriba);
+    b.addEventListener('pointercancel', arriba);
+  });
+
+  // --- bucle -------------------------------------------------------------
+  var reloj = 0;
+  function vuelta(ahora) {
+    requestAnimationFrame(vuelta);
+    if (!reloj) reloj = ahora;
+    var pendientes = Math.min(4, Math.floor((ahora - reloj) / 20));
+    if (!pendientes) return;
+    reloj += pendientes * 20;
+    for (var i = 0; i < pendientes; i++) {
+      maquina.frame();
+      fotograma++;
+      tono();
+    }
+    pintar();
+  }
+  pintar();
+  requestAnimationFrame(vuelta);
+</script>
